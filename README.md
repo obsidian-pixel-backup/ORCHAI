@@ -1,14 +1,9 @@
 <div align="center">
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat-square)](https://github.com/orchai/orchai)
-[![Downloads](https://img.shields.io/badge/downloads-1.1M-brightgreen.svg?style=flat-square)](https://github.com/orchai/orchai)
-[![Release](https://img.shields.io/badge/release-v1.0.0-blue.svg?style=flat-square)](https://github.com/orchai/orchai)
-
-| 28/06/2026 | TypeScript, Python, FastAPI, Electron |
 
 ![Orchai Banner](./assets/banner.png)
 
-## Orchai - the premier orchestration wrapper to reduce attention rot and maximize development throughput!
+## Orchai - The premier orchestration wrapper to reduce attention rot and maximize development throughput!
 
 </div>
 
