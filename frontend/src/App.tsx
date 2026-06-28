@@ -36,7 +36,7 @@ const INITIAL_CHAT: ChatSession = {
 };
 
 function App() {
-  const [selectedModel, setSelectedModel] = useState<string>('north-mini-code-1.0:q4_K_M');
+  const [selectedModel, setSelectedModel] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(0.7);
   const [maxTokens, setMaxTokens] = useState<number>(-1);
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
@@ -221,7 +221,7 @@ function App() {
     const msgIndex = sourceChat.messages.findIndex(m => m.id === messageId);
     if (msgIndex === -1) return;
 
-    const branchedMessage = sourceChat.messages[msgIndex];
+
     const newId = `chat-${Date.now()}`;
     const newChat: ChatSession = {
       id: newId,

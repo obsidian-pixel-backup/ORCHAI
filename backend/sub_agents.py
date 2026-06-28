@@ -90,7 +90,7 @@ async def _run_web_researcher(task: str, model: str) -> str:
                 "messages": messages,
                 "stream": False,
                 "tools": tools,
-                "options": {"temperature": 0.2}
+                "options": {"temperature": 0.2, "num_ctx": 131072, "num_predict": -1}
             }
 
             try:

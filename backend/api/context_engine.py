@@ -486,6 +486,8 @@ class ContextOrchestrator:
                 "stream": False,
                 "options": {
                     "temperature": 0.1,
+                    "num_ctx": 131072,
+                    "num_predict": -1
                 }
             }
 

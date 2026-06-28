@@ -195,13 +195,13 @@ async def generate_chat_title(payload: GenerateTitleRequest):
         "stream": False,
         "options": {
             "temperature": 0.3,
-            "num_predict": 1000
+            "num_predict": -1
         },
         "think": True
     }
     
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=180.0) as client:
             response = await client.post(
                 f"{OLLAMA_BASE_URL}/api/chat",
                 json=ollama_payload
@@ -265,9 +265,12 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
     # 3. Intercept & Orchestrate: Build optimal context prompt
     orchestrated_messages = orch.build_orchestrated_prompt(last_user_query)
     
-    # We will let Ollama automatically calculate the best layer offload (num_gpu)
-    # and context size based on your physical 16GB VRAM limit.
+    # We will let Ollama automatically calculate the best layer offload (num_gpu).
+    # However, Ollama's default context size is 2048, which truncates web-scraped content.
+    # Set it to 131072 to prevent output truncation when processing large data and allow full context windows.
     merged_options = dict(options) if options else {}
+    if "num_ctx" not in merged_options:
+        merged_options["num_ctx"] = 131072
     
     # Define available tools
     tools = [

@@ -119,7 +119,20 @@ export function ModelSettingsPanel({
 
         const hasSelectedModel = formattedModels.some((m: {name: string, supports_reasoning: boolean, supports_vision?: boolean}) => m.name === selectedModel);
         if (formattedModels.length > 0 && (!selectedModel || !hasSelectedModel)) {
-          onModelChange(formattedModels[0].name);
+          const qwenModels = formattedModels.filter((m: any) => m.name.toLowerCase().includes('qwen'));
+          if (qwenModels.length > 0) {
+            const getParamCount = (name: string) => {
+              const matchB = name.match(/(\d+(?:\.\d+)?)b/i);
+              if (matchB) return parseFloat(matchB[1]);
+              const matchM = name.match(/(\d+(?:\.\d+)?)m/i);
+              if (matchM) return parseFloat(matchM[1]) / 1000;
+              return 0;
+            };
+            qwenModels.sort((a: any, b: any) => getParamCount(b.name) - getParamCount(a.name));
+            onModelChange(qwenModels[0].name);
+          } else {
+            onModelChange(formattedModels[0].name);
+          }
         }
         setLoading(false);
       } catch (e) {
