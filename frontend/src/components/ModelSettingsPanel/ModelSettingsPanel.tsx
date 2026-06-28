@@ -27,10 +27,12 @@ export function ModelSettingsPanel({
   stats,
   chatId,
 }: ModelSettingsPanelProps) {
-  const [models, setModels] = useState<{name: string, supports_reasoning: boolean}[]>([]);
+  const [models, setModels] = useState<{name: string, supports_reasoning: boolean, supports_vision?: boolean}[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [visionEnabled, setVisionEnabled] = useState(false);
+  const [visionInstalled, setVisionInstalled] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -53,6 +55,44 @@ export function ModelSettingsPanel({
     return modelObj ? modelObj.supports_reasoning : false;
   };
 
+  const isVisionModel = (modelName: string) => {
+    if (!modelName) return false;
+    const modelObj = models.find(m => m.name === modelName);
+    return modelObj ? !!modelObj.supports_vision : false;
+  };
+
+  useEffect(() => {
+    async function fetchVisionStatus() {
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/vision/status');
+        if (res.ok) {
+          const data = await res.json();
+          setVisionEnabled(data.enabled);
+          setVisionInstalled(data.installed);
+        }
+      } catch (e) {
+        console.error("Failed to fetch vision status:", e);
+      }
+    }
+    fetchVisionStatus();
+    
+    const interval = setInterval(fetchVisionStatus, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleToggleVision = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/vision/toggle', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setVisionEnabled(data.enabled);
+        setVisionInstalled(data.installed);
+      }
+    } catch (e) {
+      console.error("Failed to toggle vision status:", e);
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -71,13 +111,13 @@ export function ModelSettingsPanel({
 
         // Gracefully handle strings if backend hasn't restarted yet
         const formattedModels = rawModels.map((m: any) => 
-          typeof m === 'string' ? { name: m, supports_reasoning: false } : m
+          typeof m === 'string' ? { name: m, supports_reasoning: false, supports_vision: false } : m
         );
 
         setModels(formattedModels);
         setFetchError(formattedModels.length === 0);
 
-        const hasSelectedModel = formattedModels.some((m: {name: string, supports_reasoning: boolean}) => m.name === selectedModel);
+        const hasSelectedModel = formattedModels.some((m: {name: string, supports_reasoning: boolean, supports_vision?: boolean}) => m.name === selectedModel);
         if (formattedModels.length > 0 && (!selectedModel || !hasSelectedModel)) {
           onModelChange(formattedModels[0].name);
         }
@@ -238,13 +278,43 @@ export function ModelSettingsPanel({
         {/* ── Sensory Input Telemetry ── */}
         <div className="settings-section">
           <h3>Sensory Vision Feed</h3>
+          
+          <div className="vision-status-container" style={{ marginBottom: '12px', fontSize: '0.85rem', color: 'var(--text-color)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span>Selected Model Vision:</span>
+              <span style={{ color: isVisionModel(selectedModel) ? 'var(--accent-color)' : 'var(--text-muted)', fontWeight: isVisionModel(selectedModel) ? 500 : 400 }}>
+                {isVisionModel(selectedModel) ? 'Supported' : 'Not Supported'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Background Feed System:</span>
+              <span style={{ color: !visionInstalled ? '#ff4a4a' : (visionEnabled ? 'var(--accent-color)' : 'var(--text-muted)'), fontWeight: (!visionInstalled || visionEnabled) ? 500 : 400 }}>
+                {!visionInstalled ? 'Missing llava model' : (visionEnabled ? 'Active' : 'Disabled')}
+              </span>
+            </div>
+          </div>
+
           <div className="agent-status-list">
-            <button className="vision-toggle-btn">
+            <button 
+              className={`vision-toggle-btn ${visionEnabled ? 'active' : ''}`}
+              onClick={handleToggleVision}
+              disabled={!visionInstalled}
+              style={visionEnabled ? { borderColor: 'var(--accent-color)', color: 'var(--accent-color)' } : {}}
+            >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                <circle cx="12" cy="12" r="3"></circle>
+                {visionEnabled ? (
+                  <>
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                    <circle cx="12" cy="12" r="3"></circle>
+                  </>
+                ) : (
+                  <>
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                  </>
+                )}
               </svg>
-              Enable Vision Feed
+              {visionEnabled ? 'Disable Vision Feed' : 'Enable Vision Feed'}
             </button>
           </div>
         </div>

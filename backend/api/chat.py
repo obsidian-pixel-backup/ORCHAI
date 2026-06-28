@@ -896,16 +896,27 @@ async def list_models():
                             show_data = res.json()
                             template = show_data.get("template", "").lower()
                             system = show_data.get("system", "").lower()
-                            capabilities = show_data.get("capabilities", [])
+                            capabilities = show_data.get("details", {}).get("families", [])
+                            
                             supports_reasoning = (
                                 "thinking" in capabilities or
                                 "<think>" in template or "</think>" in template or 
                                 "<think>" in system or "</think>" in system
                             )
-                            return {"name": m_name, "supports_reasoning": supports_reasoning}
+                            
+                            families = show_data.get("details", {}).get("families", [])
+                            if not isinstance(families, list):
+                                families = []
+                            supports_vision = any(fam.lower() in ['clip', 'llava', 'vision'] for fam in families)
+                            
+                            return {
+                                "name": m_name, 
+                                "supports_reasoning": supports_reasoning,
+                                "supports_vision": supports_vision
+                            }
                     except Exception:
                         pass
-                    return {"name": m_name, "supports_reasoning": False}
+                    return {"name": m_name, "supports_reasoning": False, "supports_vision": False}
                 
                 models_info = await asyncio.gather(*(check_reasoning(name) for name in model_names))
                 return {"models": list(models_info)}

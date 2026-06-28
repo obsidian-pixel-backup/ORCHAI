@@ -16,6 +16,7 @@ class ScreenWatcher:
         self.running = False
         self.thread = None
         self.last_capture_path = None
+        self.vision_enabled = True
         
         # Ensure a directory exists for temp captures
         self.capture_dir = os.path.join(os.path.dirname(__file__), '..', 'temp_captures')
@@ -38,6 +39,9 @@ class ScreenWatcher:
     def _watch_loop(self):
         with mss.mss() as sct:
             while self.running:
+                if not self.vision_enabled:
+                    time.sleep(self.capture_interval)
+                    continue
                 try:
                     # Capture the primary monitor
                     monitor = sct.monitors[1]
@@ -85,6 +89,10 @@ class ScreenWatcher:
             if response.status_code == 200:
                 data = response.json()
                 return data.get("message", {}).get("content", "").strip()
+            elif response.status_code == 404:
+                logger.warning("Vision model 'llava' not found in Ollama. Disabling screen watcher to avoid spam.")
+                self.vision_enabled = False
+                return None
             else:
                 logger.warning(f"Vision model returned {response.status_code}. Is 'llava' pulled in Ollama?")
                 return None

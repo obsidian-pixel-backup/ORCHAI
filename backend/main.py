@@ -127,6 +127,19 @@ app.include_router(chat_router, prefix="/api/chat")
 def root():
     return {"status": "ok", "message": "ORCHAI Backend Running"}
 
+@app.get("/api/vision/status")
+def get_vision_status():
+    if not SENSORY_MODULES_LOADED or not screen_watcher:
+        return {"enabled": False, "installed": False}
+    return {"enabled": screen_watcher.vision_enabled, "installed": True}
+
+@app.post("/api/vision/toggle")
+def toggle_vision_status():
+    if not SENSORY_MODULES_LOADED or not screen_watcher:
+        return {"enabled": False, "installed": False}
+    screen_watcher.vision_enabled = not screen_watcher.vision_enabled
+    return {"enabled": screen_watcher.vision_enabled, "installed": True}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
