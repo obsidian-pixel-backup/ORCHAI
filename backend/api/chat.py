@@ -485,6 +485,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         if thinking_token:
                             if not is_thinking:
                                 is_thinking = True
+                                think_start_time = asyncio.get_event_loop().time()
                                 full_content += "<think>\n"
                                 await manager.send_personal_message(
                                     json.dumps({
@@ -524,17 +525,20 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         if content_token:
                             if is_thinking:
                                 is_thinking = False
-                                full_content += "\n</think>\n\n"
+                                think_elapsed = asyncio.get_event_loop().time() - think_start_time
+                                duration_str = f"<!-- duration: {think_elapsed:.2f}s -->"
+                                close_tag_content = f"\n{duration_str}\n</think>\n\n"
+                                full_content += close_tag_content
                                 await manager.send_personal_message(
                                     json.dumps({
                                         "type": "stream",
                                         "id": msg_id,
                                         "role": "model",
-                                        "content": "\n</think>\n\n",
+                                        "content": close_tag_content,
                                         "done": False,
                                         "stats": {
                                             "tokens": token_count,
-                                            "tokens_per_second": round(tokens_per_sec, 1),
+                                            "tokens_per_second": round(tokens_per_second, 1) if 'tokens_per_second' in locals() else round(tokens_per_sec, 1),
                                             "elapsed": round(elapsed, 2),
                                         },
                                     }),
@@ -562,17 +566,20 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         if chunk.get("done"):
                             if is_thinking:
                                 is_thinking = False
-                                full_content += "\n</think>\n\n"
+                                think_elapsed = asyncio.get_event_loop().time() - think_start_time
+                                duration_str = f"<!-- duration: {think_elapsed:.2f}s -->"
+                                close_tag_content = f"\n{duration_str}\n</think>\n\n"
+                                full_content += close_tag_content
                                 await manager.send_personal_message(
                                     json.dumps({
                                         "type": "stream",
                                         "id": msg_id,
                                         "role": "model",
-                                        "content": "\n</think>\n\n",
+                                        "content": close_tag_content,
                                         "done": False,
                                         "stats": {
                                             "tokens": token_count,
-                                            "tokens_per_second": round(tokens_per_sec, 1),
+                                            "tokens_per_second": round(tokens_per_second, 1) if 'tokens_per_second' in locals() else round(tokens_per_sec, 1),
                                             "elapsed": round(elapsed, 2),
                                         },
                                     }),

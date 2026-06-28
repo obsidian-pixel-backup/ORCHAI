@@ -23,7 +23,7 @@ interface ChatMessageProps {
 }
 
 function parseChronologicalBlocks(content: string) {
-  const blocks: { type: 'text' | 'thinking', content: string, isThinkingActive: boolean }[] = [];
+  const blocks: { type: 'text' | 'thinking', content: string, isThinkingActive: boolean, duration?: string }[] = [];
   let remaining = content;
   
   while (remaining.length > 0) {
@@ -43,7 +43,16 @@ function parseChronologicalBlocks(content: string) {
       blocks.push({ type: 'thinking', content: remaining.slice(startIdx + 7), isThinkingActive: true });
       break;
     } else {
-      blocks.push({ type: 'thinking', content: remaining.slice(startIdx + 7, endIdx), isThinkingActive: false });
+      let thinkingContent = remaining.slice(startIdx + 7, endIdx);
+      let duration: string | undefined;
+      
+      const durationMatch = thinkingContent.match(/<!-- duration: ([\d.]+)s -->/);
+      if (durationMatch) {
+        duration = durationMatch[1];
+        thinkingContent = thinkingContent.replace(/<!-- duration: [\d.]+s -->/, '').trim();
+      }
+      
+      blocks.push({ type: 'thinking', content: thinkingContent, isThinkingActive: false, duration });
       remaining = remaining.slice(endIdx + 8);
     }
   }
@@ -55,12 +64,14 @@ function parseChronologicalBlocks(content: string) {
   return blocks;
 }
 
-function ThinkingBlock({ block }: { block: { content: string, isThinkingActive: boolean } }) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+function ThinkingBlock({ block }: { block: { content: string, isThinkingActive: boolean, duration?: string } }) {
+  const [isCollapsed, setIsCollapsed] = useState(true);
 
   useEffect(() => {
     if (block.isThinkingActive) {
       setIsCollapsed(false);
+    } else {
+      setIsCollapsed(true);
     }
   }, [block.isThinkingActive]);
 
@@ -98,7 +109,7 @@ function ThinkingBlock({ block }: { block: { content: string, isThinkingActive: 
                 <path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path>
                 <polyline points="22 4 12 14.01 9 11.01"></polyline>
               </svg>
-              <span>Thought Process</span>
+              <span>Thought Process {block.duration ? `(${block.duration}s)` : ''}</span>
             </>
           )}
         </span>
