@@ -50,7 +50,7 @@ export function ContextOptimizerPanel({ stats, wsState, chatId }: ContextOptimiz
   const [loadingSearch, setLoadingSearch] = useState<boolean>(false);
 
   // Fetch current state from backend
-  const fetchWorldState = async () => {
+  const fetchWorldState = async (attempt = 1) => {
     try {
       const res = await fetch(`http://127.0.0.1:8000/api/chat/world-state?session_id=${chatId}`);
       if (res.ok) {
@@ -68,12 +68,15 @@ export function ContextOptimizerPanel({ stats, wsState, chatId }: ContextOptimiz
       }
     } catch (err) {
       console.error('Failed to fetch world state', err);
+      if (attempt < 10) {
+        setTimeout(() => fetchWorldState(attempt + 1), 2000);
+      }
     }
   };
 
   // Sync state whenever active chat, websocket state or incoming message stats change
   useEffect(() => {
-    fetchWorldState();
+    fetchWorldState(1);
   }, [chatId, wsState, stats.tokens]);
 
   // Update backend config when states change

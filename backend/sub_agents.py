@@ -40,6 +40,7 @@ async def _run_web_researcher(task: str, model: str) -> str:
         "2. `scrape_page(url)`: Returns the full text content of a webpage.\n"
         "Use these tools to gather context. When you have enough information, write a final "
         "Markdown report detailing your findings and answering the task. "
+        "IMPORTANT: Once you have gathered sufficient information, do NOT call any more tools. Instead, output the final report as your response. "
         "Do NOT engage in conversational fluff. ONLY output the final report when ready."
     )
 
@@ -79,8 +80,8 @@ async def _run_web_researcher(task: str, model: str) -> str:
         {"role": "user", "content": f"Task: {task}"}
     ]
 
-    # Limit to 5 iterations to prevent infinite loops
-    max_iterations = 5
+    # Limit iterations to prevent infinite loops
+    max_iterations = 15
     
     async with httpx.AsyncClient(timeout=120.0) as client:
         for _ in range(max_iterations):
@@ -121,7 +122,10 @@ async def _run_web_researcher(task: str, model: str) -> str:
                             messages.append({"role": "tool", "content": "Unknown tool.", "name": func_name})
                     continue
                 else:
-                    return msg.get("content", "Sub-agent returned empty report.")
+                    content = msg.get("content", "")
+                    if not content or not content.strip():
+                        return "Sub-agent returned empty report (no content)."
+                    return content
 
             except Exception as e:
                 return f"Sub-agent execution error: {str(e)}"

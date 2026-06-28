@@ -56,7 +56,7 @@ export function ModelSettingsPanel({
   useEffect(() => {
     let cancelled = false;
 
-    async function fetchModels() {
+    async function fetchModels(attempt = 1) {
       try {
         const res = await fetch('http://127.0.0.1:8000/api/chat/models');
         if (!res.ok) throw new Error('Failed to fetch models');
@@ -81,13 +81,17 @@ export function ModelSettingsPanel({
         if (formattedModels.length > 0 && (!selectedModel || !hasSelectedModel)) {
           onModelChange(formattedModels[0].name);
         }
-      } catch {
+        setLoading(false);
+      } catch (e) {
         if (!cancelled) {
-          setModels([]);
-          setFetchError(true);
+          if (attempt < 10) {
+            setTimeout(() => fetchModels(attempt + 1), 1000);
+          } else {
+            setModels([]);
+            setFetchError(true);
+            setLoading(false);
+          }
         }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
     }
 

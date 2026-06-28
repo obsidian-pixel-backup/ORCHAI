@@ -515,7 +515,7 @@ class ContextOrchestrator:
         active, archived = self.partition_context()
         
         # 1. Start with system prompt (STATIC PREFIX)
-        system_content = self.base_system_prompt
+        system_content = self.base_system_prompt + "\n\nCRITICAL: You must always prioritize the user's immediate request over any background memory or sensory context."
         
         # Inject current system time
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -526,7 +526,7 @@ class ContextOrchestrator:
             system_content += (
                 "\n\n"
                 "### REAL-TIME SENSORY DATA (Vision/Screen)\n"
-                "The following is an automated description of what the user is currently looking at on their screen:\n"
+                "The following is an automated description of what the user is currently looking at on their screen. This is strictly passive context for your awareness. DO NOT assume the user wants you to act on it unless their explicit message asks you to do so:\n"
                 f"{self.sensory_context}"
             )
         
@@ -535,7 +535,7 @@ class ContextOrchestrator:
             system_content += (
                 "\n\n"
                 "### COGNITIVE WORLD STATE (Consolidated Memory)\n"
-                "You must align with the following context established in past conversation:\n"
+                "The following is passive background context established in past conversations. Use it ONLY if it is directly relevant to answering the user's current request. Otherwise, ignore it:\n"
                 f"{self._world_state}"
             )
             
@@ -554,24 +554,26 @@ class ContextOrchestrator:
                 compiled_msg["name"] = msg["name"]
             compiled_messages.append(compiled_msg)
 
-        # 4. Inject Semantically Recalled episodic memories into the LATEST user message (DYNAMIC)
-        # This preserves the KV cache for the system prompt and earlier active messages.
+        # 4. Inject Semantically Recalled episodic memories BEFORE the LATEST user message (DYNAMIC)
+        # This prevents the recalled memories from hijacking the recency bias.
         if self.semantic_recall and archived and latest_query:
             # Gather excluded IDs (current active window messages) to avoid duplication
             active_ids = [msg["id"] for msg in active]
             recalled_docs = self._index.search(latest_query, top_k=2, exclude_ids=active_ids)
             
             if recalled_docs:
-                recall_content = "\n\n### RECALLED RELEVANT HISTORICAL FRAGMENTS (For Needle Retention)\n"
+                recall_content = "<recalled_memory>\n### RECALLED RELEVANT HISTORICAL FRAGMENTS (For Needle Retention)\n"
+                recall_content += "Use this memory ONLY if it is directly relevant to answering the user's current request. Otherwise, ignore it.\n\n"
                 for doc in recalled_docs:
                     role_label = "USER" if doc["role"] == "user" else "ASSISTANT"
                     recall_content += f"-[Archived Turn] {role_label}: {doc['content']}\n"
+                recall_content += "</recalled_memory>\n\n"
                 
-                # Append to the last message if it's from the user, otherwise append a new user message
+                # Prepend to the last message if it's from the user to avoid recency bias hijacking
                 if compiled_messages and compiled_messages[-1]["role"] == "user":
-                    compiled_messages[-1]["content"] += recall_content
+                    compiled_messages[-1]["content"] = recall_content + "USER's CURRENT REQUEST:\n" + compiled_messages[-1]["content"]
                 else:
-                    compiled_messages.append({"role": "user", "content": recall_content.strip()})
+                    compiled_messages.append({"role": "user", "content": recall_content + "USER's CURRENT REQUEST:\n" + latest_query})
             
         return compiled_messages
 
