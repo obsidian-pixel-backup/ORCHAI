@@ -2,6 +2,8 @@ import asyncio
 from ddgs import DDGS
 from bs4 import BeautifulSoup
 import nodriver as uc
+import httpx
+import ssl
 
 async def search_web(query: str, max_results: int = 5) -> list[dict]:
     """
@@ -66,40 +68,53 @@ async def search_web(query: str, max_results: int = 5) -> list[dict]:
 
 async def scrape_page(url: str) -> str:
     """
-    Scrape a webpage using nodriver to bypass anti-bot protections.
-    Extracts HTML and cleans it using BeautifulSoup.
+    Scrape a webpage. First tries httpx for speed and simplicity. 
+    If blocked or JS required, falls back to nodriver to bypass anti-bot protections.
     """
-    browser = None
-    try:
-        # Start a headless browser session
-        browser = await uc.start(headless=True)
-        
-        # Navigate to the URL
-        page = await browser.get(url)
-        
-        # Wait for the network to idle and JS/Cloudflare to resolve
-        await asyncio.sleep(5) 
-        
-        # Extract the page's HTML content
-        html_content = await page.get_content()
-        
-        # Parse HTML
+    def clean_html(html_content: str) -> str:
         soup = BeautifulSoup(html_content, "html.parser")
-        
-        # Remove noisy tags
         for tag in soup(["script", "style", "nav", "footer", "header", "aside", "noscript", "iframe"]):
             tag.decompose()
-            
-        # Extract and clean text
         text = soup.get_text(separator="\n")
         lines = (line.strip() for line in text.splitlines())
         chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        cleaned_text = "\n".join(chunk for chunk in chunks if chunk)
+        return "\n".join(chunk for chunk in chunks if chunk)
+
+    # 1. Try httpx first
+    try:
+        async with httpx.AsyncClient(verify=False, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}) as client:
+            resp = await client.get(url, timeout=10.0, follow_redirects=True)
+            if resp.status_code == 200:
+                html_content = resp.text
+                if "Just a moment" not in html_content and "cf-browser-verification" not in html_content:
+                    cleaned = clean_html(html_content)
+                    if cleaned.strip():
+                        return cleaned
+    except Exception as e:
+        print(f"httpx failed for {url}: {e}")
+
+    # 2. Fallback to nodriver
+    browser = None
+    try:
+        browser = await uc.start(headless=True, browser_args=["--ignore-certificate-errors"])
+        page = await browser.get(url)
         
+        # Wait for the network to idle and JS/Cloudflare to resolve
+        for _ in range(3):
+            await asyncio.sleep(3) 
+            html_content = await page.get_content()
+            if "Just a moment" not in html_content and "cf-browser-verification" not in html_content:
+                break
+        
+        cleaned_text = clean_html(html_content)
+        
+        if not cleaned_text.strip():
+            return f"Error: Scraped page is empty after stripping tags."
+            
         return cleaned_text
     except Exception as e:
         print(f"Error in scrape_page for {url}: {e}")
-        return ""
+        return f"Error scraping page: {str(e)}"
     finally:
         # Close the browser session securely to avoid memory leaks
         if browser is not None:

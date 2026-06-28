@@ -275,7 +275,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             "type": "function",
             "function": {
                 "name": "delegate_to_subagent",
-                "description": "Delegates a complex task to a specialized sub-agent. Use 'web-researcher' for comprehensive internet research tasks.",
+                "description": "Delegates a highly complex, multi-step task to a specialized sub-agent. Use ONLY for comprehensive research tasks that require many steps. For simple, single-step queries, use direct tools (e.g. search_web) instead.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -289,6 +289,34 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         }
                     },
                     "required": ["role", "task"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "search_web",
+                "description": "Searches the web for a query and returns titles, links, and snippets. Use this for simple web queries instead of a sub-agent.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "The search query."}
+                    },
+                    "required": ["query"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "scrape_page",
+                "description": "Scrapes and cleans the text content of a given URL. Use this directly for reading web pages instead of a sub-agent.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "The URL to scrape."}
+                    },
+                    "required": ["url"]
                 }
             }
         },
@@ -388,8 +416,11 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         if backend_dir not in sys.path:
             sys.path.append(backend_dir)
         from sub_agents import delegate_to_subagent
+        from web_research import search_web, scrape_page
     except ImportError:
         delegate_to_subagent = None
+        search_web = None
+        scrape_page = None
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
@@ -602,6 +633,57 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                 "name": func_name
                             })
                             
+                        elif func_name == "search_web":
+                            query = func_args.get("query", "")
+                            
+                            await manager.send_personal_message(
+                                json.dumps({
+                                    "type": "tool_execution",
+                                    "id": msg_id,
+                                    "tool": func_name,
+                                    "args": {"query": query}
+                                }),
+                                websocket,
+                            )
+                            
+                            if search_web:
+                                res = await search_web(query)
+                                result_content = json.dumps(res)
+                            else:
+                                result_content = "Error: web_research module could not be loaded."
+                                
+                            orch.add_message(role="tool", content=result_content, name=func_name)
+                            orchestrated_messages.append({
+                                "role": "tool",
+                                "content": result_content,
+                                "name": func_name
+                            })
+                            
+                        elif func_name == "scrape_page":
+                            url = func_args.get("url", "")
+                            
+                            await manager.send_personal_message(
+                                json.dumps({
+                                    "type": "tool_execution",
+                                    "id": msg_id,
+                                    "tool": func_name,
+                                    "args": {"url": url}
+                                }),
+                                websocket,
+                            )
+                            
+                            if scrape_page:
+                                result_content = await scrape_page(url)
+                            else:
+                                result_content = "Error: web_research module could not be loaded."
+                                
+                            orch.add_message(role="tool", content=result_content, name=func_name)
+                            orchestrated_messages.append({
+                                "role": "tool",
+                                "content": result_content,
+                                "name": func_name
+                            })
+                            
                         elif func_name == "get_system_time":
                             import datetime
                             time_str = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
@@ -700,10 +782,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                 "name": func_name
                             })
 
-                        # Format and send chronological tool I/O to frontend
                         display_output = str(result_content)
-                        if len(display_output) > 2000:
-                            display_output = display_output[:2000] + "\n\n... [Output Truncated]"
 
                         tool_data = {
                             "name": func_name,
@@ -712,24 +791,26 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         }
                         io_message = f"\n\n```tool_execution\n{json.dumps(tool_data)}\n```\n\n"
 
+                    # Send the tool execution result to the frontend stream
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "stream",
+                            "id": msg_id,
+                            "role": "model",
+                            "content": io_message,
+                            "done": False,
+                            "stats": {
+                                "tokens": token_count,
+                                "tokens_per_second": 0,
+                                "elapsed": 0,
+                            }
+                        }),
+                        websocket,
+                    )
+
                     # Preserve this iteration's thinking before the loop resets it
                     if full_thinking:
                         chronological_thinking_segments.append(full_thinking)
-                        await manager.send_personal_message(
-                            json.dumps({
-                                "type": "stream",
-                                "id": msg_id,
-                                "role": "model",
-                                "content": io_message,
-                                "done": False,
-                                "stats": {
-                                    "tokens": token_count,
-                                    "tokens_per_second": 0,
-                                    "elapsed": 0,
-                                }
-                            }),
-                            websocket,
-                        )
                     
                     # Continue the while loop to send the tool results back to Ollama
                     continue

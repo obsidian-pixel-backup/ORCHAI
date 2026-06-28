@@ -55,6 +55,69 @@ function parseChronologicalBlocks(content: string) {
   return blocks;
 }
 
+function ThinkingBlock({ block }: { block: { content: string, isThinkingActive: boolean } }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (block.isThinkingActive) {
+      setIsCollapsed(false);
+    }
+  }, [block.isThinkingActive]);
+
+  const toggleCollapse = () => {
+    if (!block.isThinkingActive) {
+      setIsCollapsed((prev) => !prev);
+    }
+  };
+
+  return (
+    <div className={`thinking-block ${block.isThinkingActive ? 'active' : ''}`}>
+      <button 
+        className={`thinking-header ${block.isThinkingActive ? 'thinking-active-header' : 'collapsible'}`}
+        onClick={toggleCollapse}
+        disabled={block.isThinkingActive}
+      >
+        <span className="thinking-title">
+          {block.isThinkingActive ? (
+            <>
+              <svg className="thinking-icon spinning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="2" x2="12" y2="6"></line>
+                <line x1="12" y1="18" x2="12" y2="22"></line>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
+                <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
+                <line x1="2" y1="12" x2="6" y2="12"></line>
+                <line x1="18" y1="12" x2="22" y2="12"></line>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
+                <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
+              </svg>
+              <span>Thinking...</span>
+            </>
+          ) : (
+            <>
+              <svg className="thinking-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+              </svg>
+              <span>Thought Process</span>
+            </>
+          )}
+        </span>
+        {!block.isThinkingActive && (
+          <svg className={`chevron-icon ${isCollapsed ? 'collapsed' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="18 15 12 9 6 15"></polyline>
+          </svg>
+        )}
+      </button>
+      
+      {!isCollapsed && (
+        <div className="thinking-body">
+          <MarkdownRenderer content={block.content} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ChatMessage({ 
   id, role, content, images, documents, thinking: thinkingProp, stats, 
   toolApprovalRequest, toolExecutions, onEdit, onBranch, onApproveTool 
@@ -63,7 +126,6 @@ export function ChatMessage({
   const chronologicalBlocks = isModel ? parseChronologicalBlocks(content) : [{ type: 'text' as const, content, isThinkingActive: false }];
   const isAnyThinkingActive = chronologicalBlocks.some(b => b.isThinkingActive);
   
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedDocIdx, setExpandedDocIdx] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(content);
@@ -90,19 +152,6 @@ export function ChatMessage({
       }
     } else {
       window.open(url, '_blank', 'noopener,noreferrer');
-    }
-  };
-
-  // Auto-expand and stay open while thinking is active
-  useEffect(() => {
-    if (isAnyThinkingActive) {
-      setIsCollapsed(false);
-    }
-  }, [isAnyThinkingActive]);
-
-  const toggleCollapse = () => {
-    if (!isAnyThinkingActive) {
-      setIsCollapsed((prev) => !prev);
     }
   };
 
@@ -169,52 +218,7 @@ export function ChatMessage({
         <div className="response-body">
           {chronologicalBlocks.map((block, idx) => {
             if (block.type === 'thinking') {
-              return (
-                <div key={idx} className={`thinking-block ${block.isThinkingActive ? 'active' : ''}`}>
-                  <button 
-                    className={`thinking-header ${block.isThinkingActive ? 'thinking-active-header' : 'collapsible'}`}
-                    onClick={toggleCollapse}
-                    disabled={block.isThinkingActive}
-                  >
-                    <span className="thinking-title">
-                      {block.isThinkingActive ? (
-                        <>
-                          <svg className="thinking-icon spinning" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="12" y1="2" x2="12" y2="6"></line>
-                            <line x1="12" y1="18" x2="12" y2="22"></line>
-                            <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line>
-                            <line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line>
-                            <line x1="2" y1="12" x2="6" y2="12"></line>
-                            <line x1="18" y1="12" x2="22" y2="12"></line>
-                            <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line>
-                            <line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line>
-                          </svg>
-                          <span>Thinking...</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg className="thinking-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M22 11.08V12a10 10 0 11-5.93-9.14"></path>
-                            <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                          </svg>
-                          <span>Thought Process</span>
-                        </>
-                      )}
-                    </span>
-                    {!block.isThinkingActive && (
-                      <svg className={`chevron-icon ${isCollapsed ? 'collapsed' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="18 15 12 9 6 15"></polyline>
-                      </svg>
-                    )}
-                  </button>
-                  
-                  {!isCollapsed && (
-                    <div className="thinking-body">
-                      <MarkdownRenderer content={block.content} />
-                    </div>
-                  )}
-                </div>
-              );
+              return <ThinkingBlock key={idx} block={block} />;
             } else {
               return isEditing ? (
                 <div key={idx} className="edit-container">
@@ -241,6 +245,28 @@ export function ChatMessage({
             }
           })}
         </div>
+
+        {/* Render Tool Approval Request if present */}
+        {toolApprovalRequest && onApproveTool && (
+          <div className="tool-approval-request">
+            <div className="tool-approval-header">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              <strong>Permission Required</strong>
+            </div>
+            <div className="tool-approval-body">
+              <p>The model wants to execute a command: <code>{toolApprovalRequest.tool}</code></p>
+              <pre className="tool-approval-code">{toolApprovalRequest.command}</pre>
+              <div className="tool-approval-actions">
+                <button className="tool-btn approve-btn" onClick={() => onApproveTool(id, true)}>Approve</button>
+                <button className="tool-btn deny-btn" onClick={() => onApproveTool(id, false)}>Deny</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* User Message Action Toolbar */}
         {role === 'user' && !isEditing && (
