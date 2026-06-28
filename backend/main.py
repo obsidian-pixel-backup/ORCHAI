@@ -134,5 +134,6 @@ if __name__ == "__main__":
         host="127.0.0.1",
         port=8000,
         reload=True,
+        reload_excludes=["*.db", "*.db-journal", "*.sqlite", "*.sqlite3"],
         log_config=None,  # Use our custom logging config instead of uvicorn's default
     )
