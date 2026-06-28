@@ -1,0 +1,123 @@
+.chat-input-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.file-preview-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  max-width: 800px;
+}
+
+.file-chip {
+  display: flex;
+  align-items: center;
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 5px; /* Must not exceed 5px */
+  padding: 4px 8px;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  max-width: 200px;
+}
+
+.file-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.file-remove-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: #ef4444;
+}
+
+.input-box {
+  display: flex;
+  align-items: flex-end;
+  background-color: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  padding: 10px 14px;
+  width: 100%;
+  max-width: 800px;
+  gap: 12px;
+}
+
+.context-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.context-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.message-textarea {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 1rem;
+  resize: none;
+  padding: 8px 0;
+  min-height: 40px;
+  max-height: 200px;
+  outline: none;
+}
+
+.message-textarea::placeholder {
+  color: #64748b;
+}
+
+.send-btn {
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-bottom: 2px;
+}
+
+.send-btn:hover {
+  background-color: var(--accent-hover);
+}
+
+.send-btn svg {
+  margin-left: -2px; /* optical alignment for the send icon */
+}

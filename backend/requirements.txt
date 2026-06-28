@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+websockets
+pydantic
+httpx
+duckduckgo-search
+nodriver
+beautifulsoup4

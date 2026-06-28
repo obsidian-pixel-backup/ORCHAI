@@ -1,0 +1,591 @@
+import re
+import math
+import time
+import asyncio
+import logging
+import sqlite3
+import json
+from typing import List, Dict, Any, Tuple, Optional
+import httpx
+
+logger = logging.getLogger("orchai.context_engine")
+logging.basicConfig(level=logging.INFO)
+
+# Standard list of English stopwords for sparse BM25 indexing
+STOPWORDS = {
+    "the", "a", "an", "and", "or", "but", "is", "are", "was", "were", "to", "for", 
+    "in", "on", "at", "by", "with", "about", "against", "between", "into", "through", 
+    "during", "before", "after", "above", "below", "of", "that", "this", "these", 
+    "those", "am", "been", "have", "has", "had", "do", "does", "did", "i", "you", 
+    "he", "she", "it", "we", "they", "my", "your", "his", "her", "its", "our", "their"
+}
+
+def estimate_tokens(text: str) -> int:
+    """Fast, robust offline token estimator (approx. 1 word = 1.3 tokens, with char boundaries)."""
+    if not text:
+        return 0
+    words = text.split()
+    chars = len(text)
+    return int(max(len(words) * 1.35, chars / 3.8))
+
+
+class SparseMemoryIndex:
+    """A lightweight, zero-dependency Python BM25 index for episodic memory retrieval."""
+    def __init__(self, k1: float = 1.5, b: float = 0.75):
+        self.k1 = k1
+        self.b = b
+        self.documents: List[Dict[str, Any]] = []  # List of {"id": str, "role": str, "content": str, "tokens": int}
+        self.doc_lengths: List[int] = []
+        self.term_freqs: List[Dict[str, int]] = []  # term -> count per doc
+        self.doc_freqs: Dict[str, int] = {}  # term -> number of docs containing it
+        self.avg_doc_len: float = 0.0
+
+    def _tokenize(self, text: str) -> List[str]:
+        # Lowercase, alphanumeric terms, filter out stopwords
+        terms = re.findall(r'[a-zA-Z0-9_]+', text.lower())
+        return [t for t in terms if t not in STOPWORDS and len(t) > 1]
+
+    def add_message(self, msg_id: str, role: str, content: str):
+        """Add a message to the search index."""
+        # Avoid duplicate indexing
+        if any(doc["id"] == msg_id for doc in self.documents):
+            return
+
+        tokens = self._tokenize(content)
+        doc_len = len(tokens)
+        
+        doc_entry = {
+            "id": msg_id,
+            "role": role,
+            "content": content,
+            "length": doc_len,
+        }
+        
+        self.documents.append(doc_entry)
+        self.doc_lengths.append(doc_len)
+        
+        # Calculate term frequencies for this document
+        tf = {}
+        for term in tokens:
+            tf[term] = tf.get(term, 0) + 1
+        self.term_freqs.append(tf)
+        
+        # Update document frequencies
+        for term in tf.keys():
+            self.doc_freqs[term] = self.doc_freqs.get(term, 0) + 1
+            
+        # Recalculate average doc length
+        self.avg_doc_len = sum(self.doc_lengths) / len(self.doc_lengths) if self.doc_lengths else 0.0
+
+    def search(self, query: str, top_k: int = 3, exclude_ids: List[str] = None) -> List[Dict[str, Any]]:
+        """Retrieve top_k documents using the BM25 scoring algorithm."""
+        if not self.documents:
+            return []
+            
+        exclude_set = set(exclude_ids or [])
+        query_terms = self._tokenize(query)
+        if not query_terms:
+            return []
+
+        scores = []
+        num_docs = len(self.documents)
+
+        for doc_idx, doc in enumerate(self.documents):
+            if doc["id"] in exclude_set:
+                continue
+                
+            score = 0.0
+            tf = self.term_freqs[doc_idx]
+            doc_len = self.doc_lengths[doc_idx]
+            
+            for term in query_terms:
+                if term not in tf:
+                    continue
+                    
+                # Document frequency and IDF calculation
+                df = self.doc_freqs.get(term, 0)
+                # Smoothed IDF to prevent negative scores
+                idf = math.log(1.0 + (num_docs - df + 0.5) / (df + 0.5))
+                
+                # BM25 term score
+                tf_val = tf[term]
+                numerator = tf_val * (self.k1 + 1.0)
+                denominator = tf_val + self.k1 * (1.0 - self.b + self.b * (doc_len / (self.avg_doc_len or 1.0)))
+                score += idf * (numerator / denominator)
+                
+            if score > 0.0:
+                scores.append((score, doc))
+
+        # Sort by score descending
+        scores.sort(key=lambda x: x[0], reverse=True)
+        return [item[1] for item in scores[:top_k]]
+
+
+class ContextOrchestrator:
+    """Manages active window, BM25 indexing, and background world state summarization."""
+    def __init__(self, session_id: str, ollama_url: str = "http://localhost:11434", db_path: str = "orchai_memory.db"):
+        self.session_id = session_id
+        self.ollama_url = ollama_url
+        self.db_path = db_path
+        
+        self._messages: List[Dict[str, Any]] = []  # All raw chat messages
+        self._world_state: str = ""  # Consolidated summary/map
+        self._index = SparseMemoryIndex()
+        
+        # Configuration parameters
+        self.active_window_limit: int = 2000  # Token limit before compressing
+        self.dynamic_consolidation: bool = True
+        self.semantic_recall: bool = True
+        self.base_system_prompt: str = (
+            "You are ORCHAI, a highly specialized agent orchestration wrapper. "
+            "Help the user efficiently solve complex development and computing problems. "
+            "Keep answers extremely precise, professional, and well-structured.\n\n"
+            "TOOLS AND SKILLS:\n"
+            "You have access to specialized tools and skills for web research, system time, and full local system access. "
+            "You can read files (`read_file`), write files (`write_file`), navigate the file system (`list_directory`), and execute terminal commands (`run_command`) on the host machine. "
+            "When faced with a query requiring real-time data, current events, time/date, missing knowledge, system information, or file manipulation, you MUST think in terms of skills and tool usage. "
+            "If the user asks for the current time, date, or day, you MUST execute the get_system_time tool. Do not claim you cannot access the time.\n"
+            "Use the provided tools appropriately instead of guessing. For example, use `list_directory` before attempting to read a file to ensure it exists."
+            "\n\n"
+            "IMPORTANT: Before answering, you MUST perform thorough step-by-step reasoning. "
+            "Wrap your entire internal reasoning process inside <think>...</think> tags. "
+            "After the closing </think> tag, provide your final polished response. "
+            "The user sees both your reasoning and your answer, so make the reasoning clear and structured."
+        )
+        
+        # Bookkeeping
+        self.consolidated_up_to: int = -1  # Index in self._messages that has been compressed
+        self.is_consolidating: bool = False
+        self._consolidation_generation: int = 0
+        
+        self._init_db()
+        self._load_from_db()
+
+    @property
+    def messages(self):
+        return self._messages
+
+    @property
+    def world_state(self):
+        return self._world_state
+
+    @world_state.setter
+    def world_state(self, value: str):
+        self._world_state = value
+        self._save_session_state()
+
+    @property
+    def index(self):
+        return self._index
+
+    def _get_db_connection(self):
+        return sqlite3.connect(self.db_path)
+
+    def _init_db(self):
+        with self._get_db_connection() as conn:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS sessions (
+                    session_id TEXT PRIMARY KEY,
+                    world_state TEXT,
+                    active_window_limit INTEGER,
+                    dynamic_consolidation INTEGER,
+                    semantic_recall INTEGER,
+                    consolidated_up_to INTEGER
+                )
+            ''')
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS messages (
+                    session_id TEXT,
+                    id TEXT,
+                    role TEXT,
+                    content TEXT,
+                    timestamp REAL,
+                    estimated_tokens INTEGER,
+                    images_json TEXT,
+                    msg_index INTEGER,
+                    PRIMARY KEY (session_id, id)
+                )
+            ''')
+            try:
+                conn.execute("ALTER TABLE messages ADD COLUMN tool_calls_json TEXT")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE messages ADD COLUMN name TEXT")
+            except sqlite3.OperationalError:
+                pass
+            conn.commit()
+
+    def _load_from_db(self):
+        with self._get_db_connection() as conn:
+            cursor = conn.execute("SELECT world_state, active_window_limit, dynamic_consolidation, semantic_recall, consolidated_up_to FROM sessions WHERE session_id = ?", (self.session_id,))
+            row = cursor.fetchone()
+            if row:
+                self._world_state = row[0] or ""
+                self.active_window_limit = row[1]
+                self.dynamic_consolidation = bool(row[2])
+                self.semantic_recall = bool(row[3])
+                self.consolidated_up_to = row[4]
+            else:
+                conn.execute("INSERT INTO sessions (session_id, world_state, active_window_limit, dynamic_consolidation, semantic_recall, consolidated_up_to) VALUES (?, ?, ?, ?, ?, ?)",
+                    (self.session_id, "", self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to))
+                conn.commit()
+
+            cursor = conn.execute("SELECT id, role, content, timestamp, estimated_tokens, images_json, tool_calls_json, name FROM messages WHERE session_id = ? ORDER BY msg_index ASC", (self.session_id,))
+            for r in cursor.fetchall():
+                msg = {
+                    "id": r[0],
+                    "role": r[1],
+                    "content": r[2],
+                    "timestamp": r[3],
+                    "estimated_tokens": r[4]
+                }
+                if r[5]:
+                    msg["images"] = json.loads(r[5])
+                if len(r) > 6 and r[6]:
+                    msg["tool_calls"] = json.loads(r[6])
+                if len(r) > 7 and r[7]:
+                    msg["name"] = r[7]
+                self._messages.append(msg)
+                self._index.add_message(msg["id"], msg["role"], msg["content"])
+
+    def _save_session_state(self):
+        with self._get_db_connection() as conn:
+            conn.execute("UPDATE sessions SET world_state = ?, active_window_limit = ?, dynamic_consolidation = ?, semantic_recall = ?, consolidated_up_to = ? WHERE session_id = ?",
+                (self._world_state, self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, self.session_id))
+            conn.commit()
+
+    def reset(self):
+        """Reset the conversation context."""
+        self._messages = []
+        self._world_state = ""
+        self._index = SparseMemoryIndex()
+        self.consolidated_up_to = -1
+        self.is_consolidating = False
+        self._consolidation_generation += 1
+        with self._get_db_connection() as conn:
+            conn.execute("DELETE FROM messages WHERE session_id = ?", (self.session_id,))
+            conn.execute("UPDATE sessions SET world_state = '', consolidated_up_to = -1 WHERE session_id = ?", (self.session_id,))
+            conn.commit()
+
+    def sync_frontend_state(self, raw_messages: List[Dict[str, Any]]):
+        """Syncs orchestrator's local history with frontend (handles edits/truncations using user messages)."""
+        f_user_msgs = [m for m in raw_messages if m.get("role") == "user"]
+        b_user_msgs = [m for m in self._messages if m.get("role") == "user"]
+        
+        match_count = 0
+        for i in range(min(len(f_user_msgs), len(b_user_msgs))):
+            if f_user_msgs[i].get("content") == b_user_msgs[i].get("content"):
+                match_count += 1
+            else:
+                break
+
+        if match_count < len(b_user_msgs):
+            if match_count == 0:
+                self._messages = []
+            else:
+                u_count = 0
+                truncate_idx = len(self._messages)
+                for idx, m in enumerate(self._messages):
+                    if m.get("role") == "user":
+                        u_count += 1
+                        if u_count > match_count:
+                            truncate_idx = idx
+                            break
+                self._messages = self._messages[:truncate_idx]
+                
+            self.rebuild_index()
+            if self.consolidated_up_to >= len(self._messages):
+                self.consolidated_up_to = max(-1, len(self._messages) - 1)
+                self._save_session_state()
+            self._consolidation_generation += 1
+            
+            with self._get_db_connection() as conn:
+                conn.execute("DELETE FROM messages WHERE session_id = ? AND msg_index >= ?", (self.session_id, len(self._messages)))
+                conn.commit()
+
+        # Add new user messages
+        for f_msg in f_user_msgs[match_count:]:
+            self.add_message(role="user", content=f_msg.get("content", ""), images=f_msg.get("images"))
+
+    def add_message(self, role: str, content: str, msg_id: str = None, images: Optional[List[str]] = None, tool_calls: Optional[List[Dict]] = None, name: Optional[str] = None) -> str:
+        """Add a new message and index it."""
+        if not msg_id:
+            msg_id = f"msg-{int(time.time() * 1000)}-{len(self._messages)}"
+            
+        msg = {
+            "id": msg_id,
+            "role": role,
+            "content": content,
+            "timestamp": time.time(),
+            "estimated_tokens": estimate_tokens(content)
+        }
+        images_json = None
+        if images:
+            msg["images"] = images
+            images_json = json.dumps(images)
+            
+        tool_calls_json = None
+        if tool_calls:
+            msg["tool_calls"] = tool_calls
+            tool_calls_json = json.dumps(tool_calls)
+            
+        if name:
+            msg["name"] = name
+            
+        msg_index = len(self._messages)
+        self._messages.append(msg)
+        
+        # Always index it immediately
+        self._index.add_message(msg_id, role, content)
+        
+        with self._get_db_connection() as conn:
+            conn.execute("INSERT OR REPLACE INTO messages (session_id, id, role, content, timestamp, estimated_tokens, images_json, msg_index, tool_calls_json, name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (self.session_id, msg_id, role, content, msg["timestamp"], msg["estimated_tokens"], images_json, msg_index, tool_calls_json, name))
+            conn.commit()
+            
+        return msg_id
+
+    def rebuild_index(self):
+        """Rebuild the sparse memory index from the current messages."""
+        self._index = SparseMemoryIndex()
+        for msg in self._messages:
+            self._index.add_message(msg["id"], msg["role"], msg["content"])
+
+    def branch_from(self, source_orch: 'ContextOrchestrator', up_to_message_id: str):
+        """Branch memory and state from another orchestrator up to a specific message."""
+        self.reset()
+        
+        split_idx = -1
+        for i, msg in enumerate(source_orch.messages):
+            if msg["id"] == up_to_message_id:
+                split_idx = i
+                break
+                
+        if split_idx == -1:
+            split_idx = len(source_orch.messages) - 1
+            
+        messages_to_copy = source_orch.messages[:split_idx+1]
+        
+        self.active_window_limit = source_orch.active_window_limit
+        self.dynamic_consolidation = source_orch.dynamic_consolidation
+        self.semantic_recall = source_orch.semantic_recall
+        
+        if source_orch.consolidated_up_to <= split_idx:
+            self._world_state = source_orch.world_state
+            self.consolidated_up_to = source_orch.consolidated_up_to
+        else:
+            self._world_state = ""
+            self.consolidated_up_to = -1
+            
+        self._save_session_state()
+            
+        for msg in messages_to_copy:
+            images = msg.get("images")
+            self.add_message(msg["role"], msg["content"], msg["id"], images)
+
+    def set_config(self, active_window_limit: int, dynamic_consolidation: bool, semantic_recall: bool):
+        self.active_window_limit = active_window_limit
+        self.dynamic_consolidation = dynamic_consolidation
+        self.semantic_recall = semantic_recall
+        self._save_session_state()
+
+    def partition_context(self) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """Split chat history into Active Window and Archived History based on token limits."""
+        if not self._messages:
+            return [], []
+
+        active_messages = []
+        archived_messages = []
+        token_accum = 0
+
+        # Iterate backwards from the most recent messages to build the Active Window
+        for msg in reversed(self._messages):
+            msg_tokens = msg.get("estimated_tokens", 100)
+            if token_accum + msg_tokens <= self.active_window_limit or len(active_messages) < 2:
+                active_messages.insert(0, msg)
+                token_accum += msg_tokens
+            else:
+                archived_messages.insert(0, msg)
+
+        return active_messages, archived_messages
+
+    async def consolidate_memory_background(self, model: str):
+        """Asynchronously consolidates newly archived messages into the World State."""
+        if self.is_consolidating or not self.dynamic_consolidation:
+            return
+            
+        _, archived = self.partition_context()
+        if not archived:
+            return
+
+        # Find where to start consolidating
+        new_archived = []
+        start_idx = self.consolidated_up_to + 1
+        
+        # Build map of ids to index in self._messages
+        id_to_idx = {msg["id"]: idx for idx, msg in enumerate(self._messages)}
+        
+        for msg in archived:
+            idx = id_to_idx.get(msg["id"], -1)
+            if idx >= start_idx:
+                new_archived.append(msg)
+
+        if not new_archived:
+            return
+
+        self.is_consolidating = True
+        logger.info(f"Triggering memory consolidation background task for {len(new_archived)} messages.")
+        
+        current_gen = self._consolidation_generation
+        asyncio.create_task(self._run_consolidation(new_archived, model, len(archived) - 1, current_gen))
+
+    async def _run_consolidation(self, new_messages: List[Dict[str, Any]], model: str, new_up_to_idx: int, generation: int):
+        try:
+            # Build text of old logs to consolidate
+            formatted_logs = ""
+            for msg in new_messages:
+                role_label = "User" if msg["role"] == "user" else "Assistant"
+                formatted_logs += f"{role_label}: {msg['content']}\n\n"
+
+            prompt = (
+                f"You are the Cognitive Memory Consolidation module of ORCHAI.\n"
+                f"Your task is to update the current 'Cognitive World State' with new chat messages.\n\n"
+                f"=== Current Cognitive World State ===\n"
+                f"{self.world_state or 'No previous state. This is the start of the conversation.'}\n\n"
+                f"=== New Messages to Merge ===\n"
+                f"{formatted_logs}\n"
+                f"Instructions:\n"
+                f"1. Generate a revised, unified, highly structured 'Cognitive World State' in clean Markdown.\n"
+                f"2. Keep it dense, clear, and extremely concise (strictly under 300 words total).\n"
+                f"3. Focus on: User details (OS, stack), key decisions, architectural rules established, and ongoing tasks.\n"
+                f"4. Do NOT include any conversational intro/outro or conversational fluff. ONLY return the revised markdown world state."
+            )
+
+            payload = {
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": "You are a precise database updates assistant. Output ONLY the updated markdown block, nothing else."},
+                    {"role": "user", "content": prompt}
+                ],
+                "stream": False,
+                "options": {
+                    "temperature": 0.1,
+                }
+            }
+
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(
+                    f"{self.ollama_url}/api/chat",
+                    json=payload
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    summary_text = data.get("message", {}).get("content", "").strip()
+                    if summary_text:
+                        # Guard against race conditions (e.g., state was cleared while we waited)
+                        if self._consolidation_generation == generation:
+                            self.world_state = summary_text
+                            self.consolidated_up_to = new_up_to_idx
+                            self._save_session_state()
+                            logger.info("Memory consolidation completed successfully.")
+                            logger.info(f"Updated World State:\n{self._world_state}")
+                        else:
+                            logger.info("Memory consolidation aborted: generation mismatch.")
+                else:
+                    logger.error(f"Ollama consolidation failed with status {response.status_code}")
+        except Exception as e:
+            logger.error(f"Error in consolidation task: {repr(e)}")
+        finally:
+            self.is_consolidating = False
+
+    def build_orchestrated_prompt(self, latest_query: str) -> List[Dict[str, Any]]:
+        """Construct the optimized model input with active window, system guidelines, world state, and recalled context."""
+        from datetime import datetime
+        active, archived = self.partition_context()
+        
+        # 1. Start with system prompt (STATIC PREFIX)
+        system_content = self.base_system_prompt
+        
+        # Inject current system time
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        system_content += f"\n\nCURRENT SYSTEM TIME: {current_time}\n"
+        
+        # 2. Inject consolidated World State (STATIC PREFIX)
+        if self._world_state:
+            system_content += (
+                "\n\n"
+                "### COGNITIVE WORLD STATE (Consolidated Memory)\n"
+                "You must align with the following context established in past conversation:\n"
+                f"{self._world_state}"
+            )
+            
+        # 3. Construct final payload starting with the static system message
+        compiled_messages = [{"role": "system", "content": system_content}]
+        
+        # Add the active window messages (translated roles if needed)
+        for msg in active:
+            role = "assistant" if msg["role"] == "model" else msg["role"]
+            compiled_msg = {"role": role, "content": msg["content"]}
+            if "images" in msg and msg["images"]:
+                compiled_msg["images"] = msg["images"]
+            if msg.get("tool_calls"):
+                compiled_msg["tool_calls"] = msg["tool_calls"]
+            if msg.get("name"):
+                compiled_msg["name"] = msg["name"]
+            compiled_messages.append(compiled_msg)
+
+        # 4. Inject Semantically Recalled episodic memories into the LATEST user message (DYNAMIC)
+        # This preserves the KV cache for the system prompt and earlier active messages.
+        if self.semantic_recall and archived and latest_query:
+            # Gather excluded IDs (current active window messages) to avoid duplication
+            active_ids = [msg["id"] for msg in active]
+            recalled_docs = self._index.search(latest_query, top_k=2, exclude_ids=active_ids)
+            
+            if recalled_docs:
+                recall_content = "\n\n### RECALLED RELEVANT HISTORICAL FRAGMENTS (For Needle Retention)\n"
+                for doc in recalled_docs:
+                    role_label = "USER" if doc["role"] == "user" else "ASSISTANT"
+                    recall_content += f"-[Archived Turn] {role_label}: {doc['content']}\n"
+                
+                # Append to the last message if it's from the user, otherwise append a new user message
+                if compiled_messages and compiled_messages[-1]["role"] == "user":
+                    compiled_messages[-1]["content"] += recall_content
+                else:
+                    compiled_messages.append({"role": "user", "content": recall_content.strip()})
+            
+        return compiled_messages
+
+    def get_stats(self) -> Dict[str, Any]:
+        """Compute context distribution stats for the frontend dashboard."""
+        active, archived = self.partition_context()
+        
+        active_tokens = sum(msg.get("estimated_tokens", 0) for msg in active)
+        archived_tokens = sum(msg.get("estimated_tokens", 0) for msg in archived)
+        world_state_tokens = estimate_tokens(self._world_state)
+        
+        # Recalled tokens estimate (top 2 from search)
+        recalled_tokens = 0
+        if self.semantic_recall and archived and self._messages:
+            # Estimate query retrieval size
+            last_user_query = ""
+            for msg in reversed(self._messages):
+                if msg["role"] == "user":
+                    last_user_query = msg["content"]
+                    break
+            active_ids = [m["id"] for m in active]
+            recalled = self._index.search(last_user_query, top_k=2, exclude_ids=active_ids)
+            recalled_tokens = sum(estimate_tokens(doc["content"]) for doc in recalled)
+            
+        total_active_context = active_tokens + world_state_tokens + recalled_tokens + estimate_tokens(self.base_system_prompt)
+        
+        return {
+            "active_tokens": active_tokens,
+            "archived_tokens": archived_tokens,
+            "world_state_tokens": world_state_tokens,
+            "recalled_tokens": recalled_tokens,
+            "total_active_context": total_active_context,
+            "active_messages_count": len(active),
+            "archived_messages_count": len(archived),
+            "is_consolidating": self.is_consolidating,
+        }
