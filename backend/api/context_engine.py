@@ -155,6 +155,7 @@ class ContextOrchestrator:
         self.consolidated_up_to: int = -1  # Index in self._messages that has been compressed
         self.is_consolidating: bool = False
         self._consolidation_generation: int = 0
+        self.sensory_context: str = ""
         
         self._init_db()
         self._load_from_db()
@@ -261,6 +262,8 @@ class ContextOrchestrator:
         self.consolidated_up_to = -1
         self.is_consolidating = False
         self._consolidation_generation += 1
+        self.sensory_context = ""
+        
         with self._get_db_connection() as conn:
             conn.execute("DELETE FROM messages WHERE session_id = ?", (self.session_id,))
             conn.execute("UPDATE sessions SET world_state = '', consolidated_up_to = -1 WHERE session_id = ?", (self.session_id,))
@@ -511,6 +514,15 @@ class ContextOrchestrator:
         # Inject current system time
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         system_content += f"\n\nCURRENT SYSTEM TIME: {current_time}\n"
+        
+        # Inject Real-time Sensory Context if available
+        if self.sensory_context:
+            system_content += (
+                "\n\n"
+                "### REAL-TIME SENSORY DATA (Vision/Screen)\n"
+                "The following is an automated description of what the user is currently looking at on their screen:\n"
+                f"{self.sensory_context}"
+            )
         
         # 2. Inject consolidated World State (STATIC PREFIX)
         if self._world_state:

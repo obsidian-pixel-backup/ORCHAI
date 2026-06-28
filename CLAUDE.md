@@ -156,3 +156,9 @@ python -m pytest               # Run all tests
 - **Backend Chat Streaming (`backend/api/chat.py`)**: Enhanced WebSocket chat router to properly track and merge internal reasoning/thinking segments across multi-step tool iterations, and run blocking system tools asynchronously in threads.
 - **Context Engine (`backend/api/context_engine.py`)**: Fixed indexing bounds during background memory consolidation and preserved extra message metadata (`tool_calls`, `name`) when replicating message contexts.
 - **Frontend App & Streaming State (`frontend/src/App.tsx`, `ChatInterfacePanel.tsx`)**: Re-factored state cleanup when deleting the active chat, and synchronized mutable model options using refs during socket connection streams.
+
+### Advanced Capabilities (June 28, 2026)
+- **Local Audio Transcriber (Whisper)**: Replaced the Google Speech API with local `faster-whisper`. Audio is processed natively from raw PCM bytes without requiring `ffmpeg`.
+- **Vision LLM Integration (Screen Watcher)**: The screen watcher module now automatically scales screenshots down to 1024x1024 and routes them to Ollama's `llava` vision model. The model generates a succinct description of the user's desktop context, which is actively injected into the ContextOrchestrator's world state via a new `/world-state/sensory` REST endpoint.
+- **Tool Sandboxing**: To prevent destructive actions, the backend now pauses tool execution streams and sends an interactive approval request to the React frontend. Execution resumes only after the user explicitly approves the command payload from the chat interface.
+- **Tool UI Visualization**: `ChatMessage.tsx` was enhanced to parse and chronologically render chronological blocks of tool executions (as informative pills) and tool approval prompts above the final streamed response.

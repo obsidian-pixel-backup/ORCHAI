@@ -15,8 +15,11 @@ interface ChatMessageProps {
     elapsed: number;
     model?: string;
   };
+  toolApprovalRequest?: { tool: string; command: string };
+  toolExecutions?: { tool: string; args: any }[];
   onEdit?: (id: string, newContent: string) => void;
   onBranch?: (id: string) => void;
+  onApproveTool?: (id: string, approved: boolean) => void;
 }
 
 interface ParsedMessage {
@@ -89,7 +92,10 @@ function resolveThinking(content: string, thinkingProp?: string): ParsedMessage 
   return parsedFromContent;
 }
 
-export function ChatMessage({ id, role, content, images, documents, thinking: thinkingProp, stats, onEdit, onBranch }: ChatMessageProps) {
+export function ChatMessage({ 
+  id, role, content, images, documents, thinking: thinkingProp, stats, 
+  toolApprovalRequest, toolExecutions, onEdit, onBranch, onApproveTool 
+}: ChatMessageProps) {
   const isModel = role === 'model';
   const parsed = isModel ? resolveThinking(content, thinkingProp) : { thinking: undefined, response: content, isThinkingActive: false };
   
@@ -240,6 +246,37 @@ export function ChatMessage({ id, role, content, images, documents, thinking: th
                 <MarkdownRenderer content={parsed.thinking} />
               </div>
             )}
+          </div>
+        )}
+
+
+        {/* Render Tool Executions */}
+        {toolExecutions && toolExecutions.length > 0 && (
+          <div className="tool-executions-container">
+            {toolExecutions.map((exec, idx) => (
+              <div key={idx} className="tool-execution-pill">
+                <span className="tool-execution-icon">🛠️</span>
+                <span className="tool-execution-name">{exec.tool}</span>
+                <span className="tool-execution-args">{JSON.stringify(exec.args).slice(0, 50)}{JSON.stringify(exec.args).length > 50 ? '...' : ''}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Render Tool Approval Request */}
+        {toolApprovalRequest && (
+          <div className="tool-approval-container">
+            <div className="tool-approval-header">
+              ⚠️ Tool Execution Approval Required
+            </div>
+            <div className="tool-approval-body">
+              <p>The model wants to execute <strong>{toolApprovalRequest.tool}</strong> with the following command:</p>
+              <pre className="tool-approval-command">{toolApprovalRequest.command}</pre>
+            </div>
+            <div className="tool-approval-actions">
+              <button className="tool-approve-btn" onClick={() => onApproveTool?.(id, true)}>Approve</button>
+              <button className="tool-deny-btn" onClick={() => onApproveTool?.(id, false)}>Deny</button>
+            </div>
           </div>
         )}
 

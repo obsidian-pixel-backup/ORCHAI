@@ -13,6 +13,10 @@ OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 # Store orchestrators by session_id
 orchestrators: Dict[str, ContextOrchestrator] = {}
 
+# Tool sandboxing state
+tool_approval_events: Dict[str, asyncio.Event] = {}
+tool_approval_results: Dict[str, bool] = {}
+
 
 def get_orchestrator(session_id: str) -> ContextOrchestrator:
     """Retrieve or create a ContextOrchestrator for the given session ID."""
@@ -51,6 +55,11 @@ manager = ConnectionManager()
 class WorldStateUpdate(BaseModel):
     session_id: str
     world_state: str
+
+
+class SensoryContextUpdate(BaseModel):
+    session_id: str
+    sensory_context: str
 
 
 class ConfigUpdate(BaseModel):
@@ -107,6 +116,16 @@ async def update_world_state(payload: WorldStateUpdate):
         "status": "success",
         "world_state": orch.world_state,
         "stats": orch.get_stats()
+    }
+
+
+@router.post("/world-state/sensory")
+async def update_sensory_context(payload: SensoryContextUpdate):
+    """Inject real-time sensory data (e.g. from the screen watcher) into the context."""
+    orch = get_orchestrator(payload.session_id)
+    orch.sensory_context = payload.sensory_context
+    return {
+        "status": "success"
     }
 
 
@@ -227,7 +246,7 @@ async def generate_chat_title(payload: GenerateTitleRequest):
 async def stream_ollama_response(payload: dict, websocket: WebSocket):
     """Orchestrates incoming chat request, executes RAG/Consolidation, and streams back token chunks."""
     session_id = payload.get("session_id", "default")
-    model = payload.get("model", "llama3.2")
+    model = payload.get("model", "north-mini-code-1.0:q4_K_M")
     raw_messages = payload.get("messages", [])
     options = payload.get("options", {})
 
@@ -500,16 +519,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             
                             await manager.send_personal_message(
                                 json.dumps({
-                                    "type": "stream",
+                                    "type": "tool_execution",
                                     "id": msg_id,
-                                    "role": "model",
-                                    "content": f"\n\n> *System is live searching the web for: '{query}'...*\n\n",
-                                    "done": False,
-                                    "stats": {
-                                        "tokens": token_count,
-                                        "tokens_per_second": 0,
-                                        "elapsed": 0,
-                                    }
+                                    "tool": func_name,
+                                    "args": {"query": query}
                                 }),
                                 websocket,
                             )
@@ -537,17 +550,75 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                 "name": func_name
                             })
                             
-                        elif func_name in ["read_file", "write_file", "list_directory", "run_command"]:
-                            import system_tools
+                        elif func_name == "run_command":
+                            command = func_args.get("command", "")
+                            
+                            # Ask for approval
+                            tool_approval_events[msg_id] = asyncio.Event()
+                            await manager.send_personal_message(
+                                json.dumps({
+                                    "type": "tool_approval_request",
+                                    "id": msg_id,
+                                    "tool": func_name,
+                                    "command": command
+                                }),
+                                websocket
+                            )
+                            
+                            # Wait for frontend approval
+                            await tool_approval_events[msg_id].wait()
+                            approved = tool_approval_results.get(msg_id, False)
+                            
+                            # Cleanup state
+                            del tool_approval_events[msg_id]
+                            if msg_id in tool_approval_results:
+                                del tool_approval_results[msg_id]
+                                
+                            if not approved:
+                                result_content = f"Error: User denied permission to run command: {command}"
+                            else:
+                                await manager.send_personal_message(
+                                    json.dumps({
+                                        "type": "tool_execution",
+                                        "id": msg_id,
+                                        "tool": func_name,
+                                        "args": {"command": command}
+                                    }),
+                                    websocket
+                                )
+                                from system_tools import run_command
+                                try:
+                                    result_content = await asyncio.to_thread(run_command, command)
+                                except Exception as e:
+                                    result_content = f"Error executing {func_name}: {str(e)}"
+                                
+                            orch.add_message(role="tool", content=result_content, name=func_name)
+                            orchestrated_messages.append({
+                                "role": "tool",
+                                "content": result_content,
+                                "name": func_name
+                            })
+                            
+                        elif func_name in ["read_file", "write_file", "list_directory"]:
+                            # Safe tools just emit an execution event
+                            await manager.send_personal_message(
+                                json.dumps({
+                                    "type": "tool_execution",
+                                    "id": msg_id,
+                                    "tool": func_name,
+                                    "args": func_args
+                                }),
+                                websocket
+                            )
+                            
+                            from system_tools import read_file, write_file, list_directory
                             try:
                                 if func_name == "read_file":
-                                    result_content = await asyncio.to_thread(system_tools.read_file, func_args.get("filepath", ""))
+                                    result_content = await asyncio.to_thread(read_file, func_args.get("filepath", ""))
                                 elif func_name == "write_file":
-                                    result_content = await asyncio.to_thread(system_tools.write_file, func_args.get("filepath", ""), func_args.get("content", ""))
+                                    result_content = await asyncio.to_thread(write_file, func_args.get("filepath", ""), func_args.get("content", ""))
                                 elif func_name == "list_directory":
-                                    result_content = await asyncio.to_thread(system_tools.list_directory, func_args.get("path", ""))
-                                elif func_name == "run_command":
-                                    result_content = await asyncio.to_thread(system_tools.run_command, func_args.get("command", ""))
+                                    result_content = await asyncio.to_thread(list_directory, func_args.get("path", ""))
                             except Exception as e:
                                 result_content = f"Error executing {func_name}: {str(e)}"
                                 
@@ -708,6 +779,13 @@ async def websocket_endpoint(websocket: WebSocket):
                     if current_task and not current_task.done():
                         current_task.cancel()
                     continue
+                    
+                if payload.get("action") == "tool_approve":
+                    msg_id = payload.get("id")
+                    if msg_id in tool_approval_events:
+                        tool_approval_results[msg_id] = payload.get("approved", False)
+                        tool_approval_events[msg_id].set()
+                    continue
 
                 if current_task and not current_task.done():
                     current_task.cancel()
@@ -730,7 +808,7 @@ async def websocket_endpoint(websocket: WebSocket):
                                         "tokens": 0,
                                         "tokens_per_second": 0,
                                         "elapsed": 0,
-                                        "model": p.get("model", "llama3.2"),
+                                        "model": p.get("model", "north-mini-code-1.0:q4_K_M"),
                                     }
                                 }),
                                 ws

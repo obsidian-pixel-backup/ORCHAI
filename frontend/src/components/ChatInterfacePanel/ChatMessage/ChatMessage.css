@@ -29,6 +29,17 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
+.user-bubble .markdown-container p,
+.user-bubble .markdown-container li,
+.user-bubble .markdown-container h1,
+.user-bubble .markdown-container h2,
+.user-bubble .markdown-container h3,
+.user-bubble .markdown-container h4,
+.user-bubble .markdown-container h5,
+.user-bubble .markdown-container h6 {
+  color: var(--user-msg-text);
+}
+
 /* Model gets NO bubble, just plain text */
 .model-text {
   color: var(--text-primary);

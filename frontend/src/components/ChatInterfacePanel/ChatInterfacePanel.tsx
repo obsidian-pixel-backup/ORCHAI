@@ -16,6 +16,8 @@ export interface Message {
     elapsed: number;
     model?: string;
   };
+  toolApprovalRequest?: { tool: string; command: string };
+  toolExecutions?: { tool: string; args: any }[];
 }
 
 interface ChatInterfacePanelProps {
@@ -148,6 +150,16 @@ export function ChatInterfacePanel({
     scrollToBottom('auto');
     setActiveResponseId(null);
   }, [chatId, scrollToBottom]);
+
+  const handleApproveTool = useCallback((id: string, approved: boolean) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        action: 'tool_approve',
+        id,
+        approved
+      }));
+    }
+  }, []);
 
   // Smart auto scroll effect: only snaps to bottom if user is already at the bottom
   useEffect(() => {
@@ -283,6 +295,32 @@ export function ChatInterfacePanel({
                 isStreamingRef.current = false;
               }
             }, 0);
+          } else if (data.type === 'tool_approval_request') {
+            const currentId = streamingMessageIdRef.current;
+            if (currentId) {
+              setMessagesRef.current((prev) =>
+                prev.map((msg) =>
+                  msg.id === currentId
+                    ? { ...msg, toolApprovalRequest: { tool: data.tool, command: data.command } }
+                    : msg
+                )
+              );
+            }
+          } else if (data.type === 'tool_execution') {
+            const currentId = streamingMessageIdRef.current;
+            if (currentId) {
+              setMessagesRef.current((prev) =>
+                prev.map((msg) => {
+                  if (msg.id === currentId) {
+                    const execs = msg.toolExecutions ? [...msg.toolExecutions] : [];
+                    execs.push({ tool: data.tool, args: data.args });
+                    // clear approval request if this is an execution
+                    return { ...msg, toolExecutions: execs, toolApprovalRequest: undefined };
+                  }
+                  return msg;
+                })
+              );
+            }
           } else if (data.type === 'error') {
             streamingMessageIdRef.current = null;
             setIsStreaming(false);
@@ -566,10 +604,13 @@ export function ChatInterfacePanel({
             content={msg.content} 
             images={msg.images}
             documents={msg.documents}
-            thinking={msg.thinking} 
-            stats={msg.stats} 
+            thinking={msg.thinking}
+            stats={msg.stats}
+            toolApprovalRequest={msg.toolApprovalRequest}
+            toolExecutions={msg.toolExecutions}
             onEdit={handleEditMessage}
             onBranch={onBranchChat}
+            onApproveTool={handleApproveTool}
           />
         ))}
         {isStreaming && !streamingMessageIdRef.current && (

@@ -6,3 +6,8 @@ httpx
 duckduckgo-search
 nodriver
 beautifulsoup4
+faster-whisper
+SpeechRecognition
+mss
+pygetwindow
+Pillow

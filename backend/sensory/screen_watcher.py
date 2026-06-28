@@ -5,6 +5,8 @@ import pygetwindow as gw
 from PIL import Image
 import threading
 import logging
+import base64
+import requests
 
 logger = logging.getLogger("orchai.sensory.screen")
 
@@ -45,16 +47,64 @@ class ScreenWatcher:
                     img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
                     
                     filepath = os.path.join(self.capture_dir, 'latest_screen.png')
-                    img.save(filepath, format="PNG")
+                    # Scale down the image for faster Vision LLM processing
+                    img_resized = img.copy()
+                    img_resized.thumbnail((1024, 1024))
+                    img_resized.save(filepath, format="PNG")
                     self.last_capture_path = filepath
                     
-                    # Note: We can send this to a Vision LLM or perform OCR here.
-                    # For now, we just save the latest frame.
-                    
+                    # Describe the screen using Ollama's llava model
+                    description = self._describe_screen(filepath)
+                    if description:
+                        # Inject into the primary active session (defaulting to 'default' session_id)
+                        self._inject_sensory_context(description)
+                        
                 except Exception as e:
                     logger.error(f"Error capturing screen: {e}")
                 
                 time.sleep(self.capture_interval)
+
+    def _describe_screen(self, filepath):
+        try:
+            with open(filepath, "rb") as image_file:
+                encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
+                
+            payload = {
+                "model": "llava",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Describe what the user is currently looking at on their screen in one concise sentence.",
+                        "images": [encoded_string]
+                    }
+                ],
+                "stream": False
+            }
+            
+            response = requests.post("http://127.0.0.1:11434/api/chat", json=payload, timeout=20)
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("message", {}).get("content", "").strip()
+            else:
+                logger.warning(f"Vision model returned {response.status_code}. Is 'llava' pulled in Ollama?")
+                return None
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"Failed to reach Vision LLM: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Error describing screen: {e}")
+            return None
+
+    def _inject_sensory_context(self, description):
+        try:
+            payload = {
+                "session_id": "default",
+                "sensory_context": description
+            }
+            requests.post("http://127.0.0.1:8000/api/chat/world-state/sensory", json=payload, timeout=2)
+            logger.info(f"Screen context injected: {description}")
+        except Exception as e:
+            logger.debug(f"Failed to inject sensory context (is backend running?): {e}")
 
     def get_latest_capture(self):
         return self.last_capture_path

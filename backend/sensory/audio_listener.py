@@ -4,9 +4,12 @@ import time
 
 try:
     import speech_recognition as sr
+    from faster_whisper import WhisperModel
+    import io
     AUDIO_AVAILABLE = True
 except ImportError:
     sr = None
+    WhisperModel = None
     AUDIO_AVAILABLE = False
 
 logger = logging.getLogger("orchai.sensory.audio")
@@ -16,8 +19,13 @@ class AudioListener:
         if AUDIO_AVAILABLE:
             self.recognizer = sr.Recognizer()
             self.recognizer.energy_threshold = energy_threshold
+            logger.info("Loading faster-whisper model...")
+            # Use small or base model, CPU by default for broader compatibility
+            self.whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8")
+            logger.info("Whisper model loaded.")
         else:
             self.recognizer = None
+            self.whisper_model = None
             logger.warning("Audio dependencies missing. AudioListener will be disabled.")
         self.running = False
         self.thread = None
@@ -89,18 +97,26 @@ class AudioListener:
 
     def _process_audio(self, audio):
         try:
-            # Note: We use Google's free API for rapid prototyping.
-            # In a true local Jarvis, we'd replace this with Whisper locally.
-            text = self.recognizer.recognize_google(audio)
+            # Convert SpeechRecognition AudioData to WAV file-like object
+            wav_bytes = audio.get_wav_data()
+            wav_io = io.BytesIO(wav_bytes)
+            
+            # Transcribe locally with faster-whisper
+            segments, info = self.whisper_model.transcribe(wav_io, beam_size=5)
+            
+            # Join all segments
+            text = " ".join([segment.text for segment in segments]).strip()
+            
+            if not text:
+                return
+
             logger.info(f"Heard: {text}")
             
             if self.on_speech_detected:
                 self.on_speech_detected(text)
                 
-        except sr.UnknownValueError:
-            pass # Speech was unintelligible
-        except sr.RequestError as e:
-            logger.error(f"Could not request results from Speech Recognition service; {e}")
+        except Exception as e:
+            logger.error(f"Error in transcription: {e}")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
