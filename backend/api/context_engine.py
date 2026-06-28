@@ -141,13 +141,16 @@ class ContextOrchestrator:
             "Help the user efficiently solve complex development and computing problems. "
             "Keep answers extremely precise, professional, and well-structured.\n\n"
             "TOOLS AND SKILLS:\n"
-            "You have access to specialized tools and skills for web research, system time, and full local system access. "
-            "You can read files (`read_file`), write files (`write_file`), navigate the file system (`list_directory`), and execute terminal commands (`run_command`) on the host machine. "
-            "For simple web queries, use `search_web` and `scrape_page` directly. Only use `delegate_to_subagent` for complex, multi-step tasks requiring deep research. "
+            "You have access to specialized tools and skills. You MUST prioritize tools based on the situation:\n"
+            "- Internet Data: For fetching real-time data, weather, or web info, ALWAYS prioritize `search_web` and `scrape_page` over using the terminal.\n"
+            "- File Navigation: For exploring the filesystem, reading, or editing, ALWAYS prioritize `list_directory`, `read_file`, and `write_file`.\n"
+            "- Coding & Execution: For running scripts, compiling code, or system-level tasks, use `run_command` (terminal).\n"
+            "Only use `delegate_to_subagent` for complex, multi-step tasks requiring deep research. "
             "When faced with a query requiring real-time data, current events, time/date, missing knowledge, system information, or file manipulation, you MUST think in terms of skills and tool usage. "
             "If the user asks for the current time, date, or day, you MUST execute the get_system_time tool. Do not claim you cannot access the time.\n"
             "Use the provided tools appropriately instead of guessing. For example, use `list_directory` before attempting to read a file to ensure it exists.\n"
-            "DO NOT hallucinate or guess tool names (e.g., do not use `curl` or `glob`). You can ONLY use the exact tools provided in your tool/function list."
+            "When using `run_command`, remember the host OS is Windows (PowerShell). DO NOT use Unix utilities like `curl`, `grep`, `cat`, or `ls`. Use PowerShell equivalents (e.g., `Invoke-RestMethod` instead of `curl`).\n"
+            "DO NOT hallucinate or guess tool names. You can ONLY use the exact tools provided in your tool/function list."
             "\n\n"
             "IMPORTANT: Always think step-by-step before answering. "
             "Your internal reasoning is visible to the user, so make it clear and structured."
@@ -564,8 +567,9 @@ class ContextOrchestrator:
             recalled_docs = self._index.search(latest_query, top_k=2, exclude_ids=active_ids)
             
             if recalled_docs:
-                recall_content = "<recalled_memory>\n### RECALLED RELEVANT HISTORICAL FRAGMENTS (For Needle Retention)\n"
-                recall_content += "Use this memory ONLY if it is directly relevant to answering the user's current request. Otherwise, ignore it.\n\n"
+                recall_content = "<recalled_memory>\n### RECALLED ARCHIVED MEMORIES\n"
+                recall_content += "These are OLD, archived messages from earlier in the session. DO NOT confuse them with the current conversation. "
+                recall_content += "Use them ONLY if the user explicitly refers to past information. Otherwise, prioritize the active conversation below.\n\n"
                 for doc in recalled_docs:
                     role_label = "USER" if doc["role"] == "user" else "ASSISTANT"
                     recall_content += f"-[Archived Turn] {role_label}: {doc['content']}\n"

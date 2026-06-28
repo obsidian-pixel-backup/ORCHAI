@@ -391,7 +391,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             "type": "function",
             "function": {
                 "name": "run_command",
-                "description": "Executes a terminal/PowerShell command and returns the output. Use for system info or advanced file manipulation. Warning: use carefully.",
+                "description": "Executes a PowerShell command on the Windows host and returns the output. DO NOT use Unix commands like curl or grep. Use Invoke-RestMethod for web requests.",
                 "parameters": {
                     "type": "object",
                     "properties": {
