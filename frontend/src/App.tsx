@@ -226,7 +226,7 @@ function App() {
     const newChat: ChatSession = {
       id: newId,
       title: `${sourceChat.title} (Branch)`,
-      messages: [branchedMessage],
+      messages: sourceChat.messages.slice(0, msgIndex + 1),
       stats: { ...sourceChat.stats }
     };
     

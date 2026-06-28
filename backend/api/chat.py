@@ -423,6 +423,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     f"{OLLAMA_BASE_URL}/api/chat",
                     json=ollama_payload,
                 ) as response:
+                    is_thinking = False
                     async for line in response.aiter_lines():
                         if not line.strip():
                             continue
@@ -451,11 +452,31 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         tokens_per_sec = token_count / elapsed if elapsed > 0 else 0
 
                         if thinking_token:
+                            if not is_thinking:
+                                is_thinking = True
+                                full_content += "<think>\n"
+                                await manager.send_personal_message(
+                                    json.dumps({
+                                        "type": "stream",
+                                        "id": msg_id,
+                                        "role": "model",
+                                        "content": "<think>\n",
+                                        "done": False,
+                                        "stats": {
+                                            "tokens": token_count,
+                                            "tokens_per_second": round(tokens_per_sec, 1),
+                                            "elapsed": round(elapsed, 2),
+                                        },
+                                    }),
+                                    websocket,
+                                )
+
                             full_thinking += thinking_token
+                            full_content += thinking_token
 
                             await manager.send_personal_message(
                                 json.dumps({
-                                    "type": "stream_thinking",
+                                    "type": "stream",
                                     "id": msg_id,
                                     "role": "model",
                                     "content": thinking_token,
@@ -470,6 +491,25 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             )
 
                         if content_token:
+                            if is_thinking:
+                                is_thinking = False
+                                full_content += "\n</think>\n\n"
+                                await manager.send_personal_message(
+                                    json.dumps({
+                                        "type": "stream",
+                                        "id": msg_id,
+                                        "role": "model",
+                                        "content": "\n</think>\n\n",
+                                        "done": False,
+                                        "stats": {
+                                            "tokens": token_count,
+                                            "tokens_per_second": round(tokens_per_sec, 1),
+                                            "elapsed": round(elapsed, 2),
+                                        },
+                                    }),
+                                    websocket,
+                                )
+
                             full_content += content_token
 
                             await manager.send_personal_message(
@@ -489,6 +529,24 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             )
 
                         if chunk.get("done"):
+                            if is_thinking:
+                                is_thinking = False
+                                full_content += "\n</think>\n\n"
+                                await manager.send_personal_message(
+                                    json.dumps({
+                                        "type": "stream",
+                                        "id": msg_id,
+                                        "role": "model",
+                                        "content": "\n</think>\n\n",
+                                        "done": False,
+                                        "stats": {
+                                            "tokens": token_count,
+                                            "tokens_per_second": round(tokens_per_sec, 1),
+                                            "elapsed": round(elapsed, 2),
+                                        },
+                                    }),
+                                    websocket,
+                                )
                             final_chunk = chunk
                             eval_duration = chunk.get("eval_duration", 0)
                             total_duration = chunk.get("total_duration", 0)
