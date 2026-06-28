@@ -6,19 +6,15 @@
 - **Agent Tools**: Core system tools (`read_file`, `write_file`, `list_directory`, `run_command`, `research_topic`) are implemented and thread-safe.
 - **Cognitive Systems**: Basic BM25-based memory consolidation is implemented.
 
+## Completed
+- [x] **Chat Management Panel**: Implemented UI for managing historical chats, deleting old chats, and branching conversations.
+- [x] **Model Settings Panel**: Implemented a settings UI to switch between models, adjust temperature, context limits, and other hyper-parameters.
+- [x] **Screen Watcher Integration**: Connected the screen watcher module to a Vision LLM (`llava`) to allow the agent to "see" the desktop context.
+- [x] **Local Audio Transcriber**: Replaced the Google speech-to-text logic with a fully local `faster-whisper` model.
+- [x] **Sandboxing**: Improved the security of `run_command` in `system_tools.py` via an interactive approval-based websocket loop.
+- [x] **Tool Usage Visualization**: Enhanced the Chat Message component to chronologically visualize tool execution payloads and commands.
+
 ## High Priority
-
-### 1. Vision & Sensory Modalities
-- [x] **Screen Watcher Integration**: Connect the screen watcher module (`sensory/screen_watcher.py`) to a Vision LLM to allow the agent to "see" the desktop context.
-- [x] **Local Audio Transcriber**: Replace the placeholder speech-to-text logic in `sensory/audio_listener.py` with a fully local Whisper model (e.g., `whisper.cpp` or `faster-whisper`) for privacy-respecting audio processing.
-
-### 2. UI / UX Expansion
-- [x] **Chat Management Panel**: Implement UI for managing historical chats, deleting old chats, and branching conversations.
-- [x] **Model Settings Panel**: Implement a settings UI to switch between models, adjust temperature, context limits, and other hyper-parameters.
-- [x] **Tool Usage Visualization**: Enhance the Chat Message component to better visualize when tools are actively running or streaming data, avoiding the generic "thinking" loader.
-
-### 3. Agent Architecture & Security
-- [x] **Sandboxing**: Improve the security of `run_command` in `system_tools.py` to prevent accidental destructive commands, perhaps via an approval-based loop for dangerous operations.
 - [ ] **Prompt Tuning**: Refine the memory consolidation prompts in `context_engine.py` to improve how the model compresses old dialogue into dense knowledge artifacts.
 - [ ] **Sub-agents**: Explore adding hierarchical sub-agents for specialized tasks (e.g., a dedicated web-researcher agent that feeds data back to the primary orchestrator).
 
