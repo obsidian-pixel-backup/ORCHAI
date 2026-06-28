@@ -16,7 +16,9 @@ class ScreenWatcher:
         self.running = False
         self.thread = None
         self.last_capture_path = None
-        self.vision_enabled = True
+        self.vision_enabled = False # Default to disabled to prevent spam if not needed immediately
+        self.vision_installed = True
+        self.last_error = None
         
         # Ensure a directory exists for temp captures
         self.capture_dir = os.path.join(os.path.dirname(__file__), '..', 'temp_captures')
@@ -87,20 +89,26 @@ class ScreenWatcher:
             
             response = requests.post("http://127.0.0.1:11434/api/chat", json=payload, timeout=20)
             if response.status_code == 200:
+                self.vision_installed = True
+                self.last_error = None
                 data = response.json()
                 return data.get("message", {}).get("content", "").strip()
             elif response.status_code == 404:
-                logger.warning("Vision model 'llava' not found in Ollama. Disabling screen watcher to avoid spam.")
-                self.vision_enabled = False
+                logger.warning("Vision model 'llava' not found in Ollama. Will retry next interval.")
+                self.vision_installed = False
+                self.last_error = "Missing llava model"
                 return None
             else:
                 logger.warning(f"Vision model returned {response.status_code}. Is 'llava' pulled in Ollama?")
+                self.last_error = f"HTTP {response.status_code}"
                 return None
         except requests.exceptions.RequestException as e:
             logger.debug(f"Failed to reach Vision LLM: {e}")
+            self.last_error = "Connection failed"
             return None
         except Exception as e:
             logger.error(f"Error describing screen: {e}")
+            self.last_error = str(e)
             return None
 
     def _inject_sensory_context(self, description):

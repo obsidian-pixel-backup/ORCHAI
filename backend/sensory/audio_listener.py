@@ -28,6 +28,7 @@ class AudioListener:
             self.whisper_model = None
             logger.warning("Audio dependencies missing. AudioListener will be disabled.")
         self.running = False
+        self.audio_enabled = False
         self.thread = None
         self.on_speech_detected = None  # Callback function for when speech is heard
 
@@ -63,9 +64,6 @@ class AudioListener:
         logger.info("Mock AudioListener active. Waiting for mock inputs or text injection...")
         while self.running:
             time.sleep(1.0)
-            # In a true interactive mock setup, we could read from a queue here.
-            # For now, it simply sleeps to keep the thread alive and prevent crashes.
-
 
     def set_callback(self, callback):
         """Set a callback function that takes text as input."""
@@ -73,27 +71,32 @@ class AudioListener:
 
     def _listen_loop(self):
         # We try to use the default microphone
-        try:
-            with sr.Microphone() as source:
-                self.recognizer.adjust_for_ambient_noise(source, duration=1)
-                logger.info("Calibrated for ambient noise. Listening...")
+        while self.running:
+            if not self.audio_enabled:
+                time.sleep(2.0)
+                continue
                 
-                while self.running:
-                    try:
-                        # Listen for speech with a timeout so we can exit the loop cleanly
-                        audio = self.recognizer.listen(source, timeout=2.0, phrase_time_limit=10.0)
-                        
-                        # Process audio in a separate thread to not block listening
-                        threading.Thread(target=self._process_audio, args=(audio,), daemon=True).start()
-                        
-                    except sr.WaitTimeoutError:
-                        pass # No speech detected in the timeout period
-                    except Exception as e:
-                        logger.error(f"Error listening to audio: {e}")
-                        time.sleep(1)
-        except Exception as e:
-            logger.error(f"Microphone error: {e}")
-            self.running = False
+            try:
+                with sr.Microphone() as source:
+                    self.recognizer.adjust_for_ambient_noise(source, duration=1)
+                    logger.info("Calibrated for ambient noise. Listening...")
+                    
+                    while self.running and self.audio_enabled:
+                        try:
+                            # Listen for speech with a timeout so we can exit the loop cleanly
+                            audio = self.recognizer.listen(source, timeout=2.0, phrase_time_limit=10.0)
+                            
+                            # Process audio in a separate thread to not block listening
+                            threading.Thread(target=self._process_audio, args=(audio,), daemon=True).start()
+                            
+                        except sr.WaitTimeoutError:
+                            pass # No speech detected in the timeout period
+                        except Exception as e:
+                            logger.error(f"Error listening to audio: {e}")
+                            time.sleep(1)
+            except Exception as e:
+                logger.error(f"Microphone error: {e}")
+                time.sleep(5.0)
 
     def _process_audio(self, audio):
         try:

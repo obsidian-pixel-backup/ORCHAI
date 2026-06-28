@@ -506,7 +506,12 @@ class ContextOrchestrator:
                             self.consolidated_up_to = new_up_to_idx
                             self._save_session_state()
                             logger.info("Memory consolidation completed successfully.")
-                            logger.info(f"Updated World State:\n{self._world_state}")
+                            try:
+            logger.info(f"Updated World State:\n{self._world_state}")
+        except UnicodeEncodeError:
+            # Fallback for Windows consoles that don't support UTF-8 properly
+            safe_str = self._world_state.encode('ascii', 'replace').decode('ascii')
+            logger.info(f"Updated World State:\n{safe_str}")
                         else:
                             logger.info("Memory consolidation aborted: generation mismatch.")
                 else:

@@ -33,6 +33,8 @@ export function ModelSettingsPanel({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [visionEnabled, setVisionEnabled] = useState(false);
   const [visionInstalled, setVisionInstalled] = useState(false);
+  const [audioEnabled, setAudioEnabled] = useState(false);
+  const [audioInstalled, setAudioInstalled] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,7 +64,7 @@ export function ModelSettingsPanel({
   };
 
   useEffect(() => {
-    async function fetchVisionStatus() {
+    async function fetchSensoryStatus() {
       try {
         const res = await fetch('http://127.0.0.1:8000/api/vision/status');
         if (res.ok) {
@@ -73,10 +75,20 @@ export function ModelSettingsPanel({
       } catch (e) {
         console.error("Failed to fetch vision status:", e);
       }
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/audio/status');
+        if (res.ok) {
+          const data = await res.json();
+          setAudioEnabled(data.enabled);
+          setAudioInstalled(data.installed);
+        }
+      } catch (e) {
+        console.error("Failed to fetch audio status:", e);
+      }
     }
-    fetchVisionStatus();
+    fetchSensoryStatus();
     
-    const interval = setInterval(fetchVisionStatus, 5000);
+    const interval = setInterval(fetchSensoryStatus, 10000);
     return () => clearInterval(interval);
   }, []);
 
@@ -90,6 +102,19 @@ export function ModelSettingsPanel({
       }
     } catch (e) {
       console.error("Failed to toggle vision status:", e);
+    }
+  };
+
+  const handleToggleAudio = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/audio/toggle', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        setAudioEnabled(data.enabled);
+        setAudioInstalled(data.installed);
+      }
+    } catch (e) {
+      console.error("Failed to toggle audio status:", e);
     }
   };
 
@@ -299,10 +324,16 @@ export function ModelSettingsPanel({
                 {isVisionModel(selectedModel) ? 'Supported' : 'Not Supported'}
               </span>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span>Background Feed System:</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span>Background Vision Feed:</span>
               <span style={{ color: !visionInstalled ? '#ff4a4a' : (visionEnabled ? 'var(--accent-color)' : 'var(--text-muted)'), fontWeight: (!visionInstalled || visionEnabled) ? 500 : 400 }}>
                 {!visionInstalled ? 'Missing llava model' : (visionEnabled ? 'Active' : 'Disabled')}
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Active Listening:</span>
+              <span style={{ color: !audioInstalled ? '#ff4a4a' : (audioEnabled ? 'var(--accent-color)' : 'var(--text-muted)'), fontWeight: (!audioInstalled || audioEnabled) ? 500 : 400 }}>
+                {!audioInstalled ? 'Mic/PyAudio missing' : (audioEnabled ? 'Active' : 'Disabled')}
               </span>
             </div>
           </div>
@@ -328,6 +359,32 @@ export function ModelSettingsPanel({
                 )}
               </svg>
               {visionEnabled ? 'Disable Vision Feed' : 'Enable Vision Feed'}
+            </button>
+            <button 
+              className={`vision-toggle-btn ${audioEnabled ? 'active' : ''}`}
+              onClick={handleToggleAudio}
+              disabled={!audioInstalled}
+              style={{ marginTop: '8px', ...(audioEnabled ? { borderColor: 'var(--accent-color)', color: 'var(--accent-color)' } : {}) }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {audioEnabled ? (
+                  <>
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </>
+                ) : (
+                  <>
+                    <line x1="1" y1="1" x2="23" y2="23"></line>
+                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"></path>
+                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                  </>
+                )}
+              </svg>
+              {audioEnabled ? 'Disable Active Listening' : 'Enable Active Listening'}
             </button>
           </div>
         </div>

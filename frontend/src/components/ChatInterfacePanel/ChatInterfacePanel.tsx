@@ -50,17 +50,8 @@ export function ChatInterfacePanel({
   onBranchChat,
 }: ChatInterfacePanelProps) {
   const [isStreaming, setIsStreaming] = useState(false);
-  const [isListening, setIsListening] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [activeResponseId, setActiveResponseId] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Mocking an update interval
-    const interval = setInterval(() => {
-      setIsListening(prev => !prev);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
 
   const wsRef = useRef<WebSocket | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
@@ -561,11 +552,6 @@ export function ChatInterfacePanel({
             )}
           </svg>
         </button>
-
-        <div className="listening-status-indicator">
-          <span className={`status-dot ${isListening ? "active" : ""}`}></span>
-          <span className="status-label">{isListening ? "Listening..." : "Idle"}</span>
-        </div>
 
         <div className="model-status-indicator">
           <span className="status-dot green"></span>
