@@ -6,7 +6,7 @@
 [![Follow Reddit](https://img.shields.io/badge/Follow%20r%2FOrchai-7.4k-orange.svg?style=flat-square)](https://reddit.com/r/orchai)
 [![Follow Twitter](https://img.shields.io/badge/Follow%20%40orchai-4.7k-blue.svg?style=flat-square)](https://twitter.com/orchai)
 
-| 28/06/2026 | TypeScript, Python |
+| 28/06/2026 | TypeScript, Python, FastAPI, Electron |
 
 ![Orchai Banner](./assets/banner.png)
 
@@ -14,51 +14,45 @@
 
 </div>
 
-**ORCHAI** is an Orchestration Wrapper focused on reducing attention rot and throughput decay. It provides a robust, native desktop experience on Windows using Electron and a Python backend.
+**ORCHAI** is an Orchestration Wrapper focused on reducing attention rot and throughput decay. It provides a robust, native desktop experience on Windows using Electron and a Python backend. It acts as an autonomous and collaborative agent orchestration application to help users efficiently solve complex development and computing problems.
 
-## Project Overview
+## 🚀 Key Features
 
-ORCHAI is designed as an agent orchestration application to help users efficiently solve complex development and computing problems. The application is built with a dual-stack architecture:
+- **Real-time Chat**: Bidirectional WebSocket communication between the Electron frontend and FastAPI backend for lightning-fast responses.
+- **Agent Orchestration**: Integrated tool execution (`read_file`, `write_file`, `list_directory`, `run_command`, `research_topic`) allowing the AI to safely interact with the host system via an interactive approval-based sandboxing loop.
+- **Cognitive World State**: Asynchronous BM25 index and memory consolidation to maintain context over long-running sessions. The engine tracks and merges internal reasoning segments across multi-step tool iterations.
+- **Sensory Processing**:
+  - **Local Audio Transcriber**: Built-in fully local `faster-whisper` model for processing raw PCM bytes natively without requiring `ffmpeg`.
+  - **Screen Watcher Integration**: Automated screen monitoring that scales screenshots to 1024x1024 and routes them to a Vision LLM (`llava`) to allow the agent to continuously "see" and understand the desktop context.
+- **Strict Modularity**: Built like LEGO bricks. Each UI component is isolated in its own `.ts`/`.tsx` file with an accompanying, separate `.css` stylesheet, completely eliminating inline styles.
+
+## 🏗️ Core Architecture
+
+ORCHAI is built with a dual-stack architecture designed for performance and maintainability:
 
 - **Frontend**: A React + TypeScript UI built with Vite and packaged as a Windows native desktop application using Electron.
 - **Backend**: A Python FastAPI server handling orchestration logic, memory consolidation, system tool execution, and real-time WebSocket communication.
-- **Sensory Input**: Built-in modules for speech-to-text (audio listener) and automated screen monitoring (screen watcher).
+- **Sensory Input**: Background threads managing speech-to-text and automated screen monitoring via a new `/world-state/sensory` REST endpoint.
 
-## Core Architecture & Rules
-
-1. **Windows Native Desktop**: The application runs purely as an Electron desktop app. There are no browser-based web interfaces.
-2. **Strict Modularity**: 
-   - The application is built like lego bricks.
-   - Each component or feature MUST be isolated in its own separate TypeScript (`.ts` or `.tsx`) file.
-   - Each component's TypeScript file MUST have an accompanying, separate `.css` stylesheet.
-3. **No Inline Styles**:
-   - Inline styling is strictly forbidden. 
-   - All styles must be defined in the component's dedicated CSS file and applied via class names.
-
-## Features
-
-- **Real-time Chat**: Bidirectional WebSocket communication between Electron and FastAPI.
-- **Agent Orchestration**: Integrated tool execution (`read_file`, `write_file`, `list_directory`, `run_command`, `research_topic`) allowing the AI to interact with the host system.
-- **Cognitive World State**: Asynchronous BM25 index and memory consolidation to maintain context over long-running sessions.
-- **Chronological Thinking**: Supports native model reasoning via Ollama and correctly parses sequential `<think>` tags generated during multi-turn tool usage loops.
-
-## Getting Started
+## 🛠️ Getting Started
 
 ### Prerequisites
 
-- Node.js (v18+)
-- Python (3.10+)
-- Ollama (installed locally)
+- [Node.js](https://nodejs.org/) (v18+)
+- [Python](https://www.python.org/) (3.10+)
+- [Ollama](https://ollama.com/) (installed locally for Vision and chronological thinking)
 
 ### Installation & Running
 
 The easiest way to start the entire application (both frontend and backend) on Windows is using the provided batch script:
 
 ```bash
+git clone https://github.com/obsidian-pixel-backup/ORCHAI.git
+cd ORCHAI
 .\start.bat
 ```
 
-**To run the components manually:**
+**To run the components manually for development:**
 
 1. **Start the Backend:**
    ```bash
@@ -74,15 +68,32 @@ The easiest way to start the entire application (both frontend and backend) on W
    npm run electron:dev
    ```
 
-## Development & Testing
+## 🧪 Development & Testing
 
-- Python backend tests can be run from the root directory using pytest:
+- **Backend Tests:** Python backend tests can be run from the root directory using pytest.
   ```bash
   python -m pytest test_*.py -v
   ```
-- To test the electron setup:
+- **Electron Testing:** To test the electron setup locally:
   ```bash
   node test_electron.cjs
   ```
 
-For more details on developing within the project, see [CLAUDE.md](CLAUDE.md).
+For more in-depth details on developing within the project, our development workflow, and internal standards, please see [CLAUDE.md](CLAUDE.md) and [project_instructions.md](project_instructions.md).
+
+## 🗺️ Product Roadmap
+
+We are constantly pushing the boundaries of what local AI orchestration can achieve. Here is a glimpse into our roadmap:
+
+- **Live Vision Agent Mode**: Real-time, human-like interaction integrating WebRTC for low-latency streaming of screen/camera.
+- **Sub-agent Delegation**: Full hierarchy and orchestration for specialized tasks, allowing the primary orchestrator to spawn and instruct specialized sub-agents.
+- **Planner Mode & Artifact Manager**: Multi-stage reasoning loops generating structured markdown implementation plans, alongside a centralized UI to manage generated documents and code diffs.
+- **MCP Server Integration**: Seamless discovery and connection to external Model Context Protocol (MCP) servers to expand the agent's toolset.
+
+## 🤝 Contributing
+
+We welcome contributions from the community! Please read our [Contributing Guide](CONTRIBUTING.md) to understand how to submit bugs, suggest enhancements, and create pull requests. Ensure you also review our [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
