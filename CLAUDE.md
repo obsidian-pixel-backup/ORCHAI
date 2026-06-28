@@ -20,7 +20,7 @@ ORCHAI is a Windows native desktop application that combines an Electron fronten
 ```bash
 cd frontend
 npm run dev          # Start Vite development server on port 5173
-d npm electron:dev   # Build with Electron and start desktop app concurrently
+npm run electron:dev   # Build with Electron and start desktop app concurrently
 npm run build        # TypeScript compile + Vite production build
 npm run lint         # ESLint code linting (TypeScript)
 npm run preview      # Preview production build locally
@@ -33,7 +33,7 @@ cd frontend
 cd ..
 python -m pytest test_*.py -v          # Run all Python tests
 python test_debug.py                   # Debug mode for testing
-test_electron.cjs                     # Electron debugging helper (from root)
+node test_electron.cjs                     # Electron debugging helper (from root)
 ```
 
 ### Backend Development (in `backend/` directory)
@@ -43,14 +43,14 @@ test_electron.cjs                     # Electron debugging helper (from root)
 cd backend
 python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 # Or if running via start.bat:
-bat start.bat
+.\start.bat
 ```
 
 **Backend Testing:**
 ```bash
 cd backend
 # Python tests are in the root directory
-python ../../test_*.py -v               # Run all backend-related tests
+python ../test_*.py -v               # Run all backend-related tests
 cat requirements.txt                   # View Python dependencies
 ```
 
@@ -136,11 +136,23 @@ This is specifically a Windows native desktop application using Electron. There 
 # Full development stack
 npm run electron:dev           # Complete Electron desktop app with live reload
 cd frontend && npm run dev     # Just frontend development server
-python ../../test_debug.py    # Debug utilities
+python ../test_debug.py    # Debug utilities
 python -m pytest               # Run all tests
 ```
 
 **Critical Files to Remember:**
 - Frontend: `frontend/src/components/`, `frontend/package.json`
-- Backend: `backend/main.py`, `backend/api/chat.py`, `sensory/audio_listener.py`
+- Backend: `backend/main.py`, `backend/api/chat.py`, `backend/sensory/audio_listener.py`
 - Root: `start.bat`, test_*.py files
+
+## Recent Updates (June 2026)
+
+### Git & GitHub Deployment
+- **Repository**: Deployed the ORCHAI codebase to a private GitHub repository at `https://github.com/obsidian-pixel-backup/ORCHAI`.
+- **Collaborators**: Invited `omesan` to the project as a collaborator.
+- **Root `.gitignore`**: Established root-level rules to exclude build outputs (`frontend/dist/`), package dependencies (`frontend/node_modules/`), local python caches (`__pycache__/`), and local database files (`backend/orchai_memory.db`).
+
+### Codebase Optimizations
+- **Backend Chat Streaming (`backend/api/chat.py`)**: Enhanced WebSocket chat router to properly track and merge internal reasoning/thinking segments across multi-step tool iterations, and run blocking system tools asynchronously in threads.
+- **Context Engine (`backend/api/context_engine.py`)**: Fixed indexing bounds during background memory consolidation and preserved extra message metadata (`tool_calls`, `name`) when replicating message contexts.
+- **Frontend App & Streaming State (`frontend/src/App.tsx`, `ChatInterfacePanel.tsx`)**: Re-factored state cleanup when deleting the active chat, and synchronized mutable model options using refs during socket connection streams.
