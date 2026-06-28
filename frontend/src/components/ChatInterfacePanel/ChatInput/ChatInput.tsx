@@ -1,4 +1,4 @@
-import { useRef, useState, ChangeEvent } from 'react';
+import React, { useRef, useState, type ChangeEvent } from 'react';
 import './ChatInput.css';
 
 interface ChatInputProps {

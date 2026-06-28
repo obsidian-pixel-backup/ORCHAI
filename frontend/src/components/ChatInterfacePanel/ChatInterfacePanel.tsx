@@ -596,7 +596,7 @@ export function ChatInterfacePanel({
             </svg>
           </button>
 
-          {navigatorMessages.map((msg, idx) => {
+          {navigatorMessages.map((msg) => {
             const isActive = msg.id === activeResponseId || (activeResponseId === null && msg.id === messages[messages.length - 1]?.id);
             
             let cleanContent = msg.content;

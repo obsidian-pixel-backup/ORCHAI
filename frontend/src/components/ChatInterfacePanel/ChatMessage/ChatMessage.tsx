@@ -17,7 +17,6 @@ interface ChatMessageProps {
   };
   onEdit?: (id: string, newContent: string) => void;
   onBranch?: (id: string) => void;
-  onShare?: (id: string, content: string) => void;
 }
 
 interface ParsedMessage {
@@ -90,7 +89,7 @@ function resolveThinking(content: string, thinkingProp?: string): ParsedMessage 
   return parsedFromContent;
 }
 
-export function ChatMessage({ id, role, content, images, documents, thinking: thinkingProp, stats, onEdit, onBranch, onShare }: ChatMessageProps) {
+export function ChatMessage({ id, role, content, images, documents, thinking: thinkingProp, stats, onEdit, onBranch }: ChatMessageProps) {
   const isModel = role === 'model';
   const parsed = isModel ? resolveThinking(content, thinkingProp) : { thinking: undefined, response: content, isThinkingActive: false };
   

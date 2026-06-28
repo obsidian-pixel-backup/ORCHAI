@@ -22,7 +22,7 @@
 
 /* User gets a fully rounded bubble */
 .user-bubble {
-  background-color: var(--user-msg-bg);
+  background: var(--user-msg-bg);
   color: var(--user-msg-text);
   padding: 12px 20px;
   border-radius: 12px;
