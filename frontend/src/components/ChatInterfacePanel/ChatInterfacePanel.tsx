@@ -16,7 +16,7 @@ export interface Message {
     elapsed: number;
     model?: string;
   };
-  toolApprovalRequest?: { tool: string; command: string };
+  toolApprovalRequest?: { tool: string; command: string; id: string };
   toolExecutions?: { tool: string; args: any }[];
 }
 
@@ -301,7 +301,7 @@ export function ChatInterfacePanel({
               setMessagesRef.current((prev) =>
                 prev.map((msg) =>
                   msg.id === currentId
-                    ? { ...msg, toolApprovalRequest: { tool: data.tool, command: data.command } }
+                    ? { ...msg, toolApprovalRequest: { tool: data.tool, command: data.command, id: data.id } }
                     : msg
                 )
               );

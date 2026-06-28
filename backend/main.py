@@ -5,6 +5,7 @@ import logging
 import sys
 import asyncio
 from api.chat import router as chat_router, manager
+from api.speech import router as speech_router, set_whisper_model
 
 # Import our sensory modules
 try:
@@ -100,6 +101,11 @@ async def lifespan(app: FastAPI):
         # Start Sensors
         audio_listener.start()
         screen_watcher.start()
+        
+        # Share the whisper model with the speech API to avoid loading it twice
+        if audio_listener.whisper_model:
+            set_whisper_model(audio_listener.whisper_model)
+        
         logger.info("Sensory Inputs Started.")
 
     yield
@@ -122,6 +128,7 @@ app.add_middleware(
 )
 
 app.include_router(chat_router, prefix="/api/chat")
+app.include_router(speech_router, prefix="/api/speech")
 
 @app.get("/")
 def root():

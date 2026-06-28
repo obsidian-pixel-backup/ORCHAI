@@ -15,7 +15,7 @@ interface ChatMessageProps {
     elapsed: number;
     model?: string;
   };
-  toolApprovalRequest?: { tool: string; command: string };
+  toolApprovalRequest?: { tool: string; command: string; id: string };
   toolExecutions?: { tool: string; args: any }[];
   onEdit?: (id: string, newContent: string) => void;
   onBranch?: (id: string) => void;
@@ -272,8 +272,8 @@ export function ChatMessage({
               <p>The model wants to execute a command: <code>{toolApprovalRequest.tool}</code></p>
               <pre className="tool-approval-code">{toolApprovalRequest.command}</pre>
               <div className="tool-approval-actions">
-                <button className="tool-btn approve-btn" onClick={() => onApproveTool(id, true)}>Approve</button>
-                <button className="tool-btn deny-btn" onClick={() => onApproveTool(id, false)}>Deny</button>
+                <button className="tool-btn approve-btn" onClick={() => onApproveTool(toolApprovalRequest.id, true)}>Approve</button>
+                <button className="tool-btn deny-btn" onClick={() => onApproveTool(toolApprovalRequest.id, false)}>Deny</button>
               </div>
             </div>
           </div>

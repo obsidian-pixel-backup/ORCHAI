@@ -121,3 +121,175 @@
 .send-btn svg {
   margin-left: -2px; /* optical alignment for the send icon */
 }
+
+/* Plus Menu Styles */
+.plus-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.plus-btn:hover, .plus-btn.active {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.plus-menu-dropdown {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  background-color: var(--panel-bg);
+  /* Added background blur so content behind is blurred */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  /* Ensure the background is slightly transparent if var(--panel-bg) is solid, 
+     though usually it already has some transparency if the user reported seeing through it */
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 8px;
+  min-width: 260px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 100;
+  animation: slideUpFade 0.2s ease-out;
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.plus-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  gap: 12px;
+}
+
+.plus-menu-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.plus-menu-icon {
+  font-size: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+}
+
+.plus-menu-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.plus-menu-title {
+  color: var(--text-primary);
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.plus-menu-desc {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  margin-top: 2px;
+}
+
+.plus-menu-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 4px 0;
+}
+
+.skill-chip {
+  background-color: rgba(59, 130, 246, 0.2); /* Soft blue for skills */
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.skill-chip .file-name {
+  color: #60a5fa;
+  font-weight: 500;
+}
+
+.skill-chip .file-remove-btn:hover {
+  color: #f87171;
+  background-color: rgba(248, 113, 113, 0.1);
+}
+
+/* Mic / voice-dictation button */
+.mic-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.mic-btn:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+/* Active recording state */
+.mic-btn--active {
+  color: #ef4444;
+  animation: mic-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}
+
+/* Transcribing state */
+.mic-btn--transcribing {
+  color: var(--accent-color, #3b82f6);
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.mic-btn--transcribing:hover {
+  background: none;
+  color: var(--accent-color, #3b82f6);
+}
+
+.mic-btn:disabled {
+  cursor: wait;
+}
+
+.mic-spinner {
+  animation: mic-spin 1s linear infinite;
+}
+
+@keyframes mic-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
