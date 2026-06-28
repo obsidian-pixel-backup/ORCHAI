@@ -3,8 +3,6 @@
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg?style=flat-square)](https://github.com/orchai/orchai)
 [![Downloads](https://img.shields.io/badge/downloads-1.1M-brightgreen.svg?style=flat-square)](https://github.com/orchai/orchai)
 [![Release](https://img.shields.io/badge/release-v1.0.0-blue.svg?style=flat-square)](https://github.com/orchai/orchai)
-[![Follow Reddit](https://img.shields.io/badge/Follow%20r%2FOrchai-7.4k-orange.svg?style=flat-square)](https://reddit.com/r/orchai)
-[![Follow Twitter](https://img.shields.io/badge/Follow%20%40orchai-4.7k-blue.svg?style=flat-square)](https://twitter.com/orchai)
 
 | 28/06/2026 | TypeScript, Python, FastAPI, Electron |
 
