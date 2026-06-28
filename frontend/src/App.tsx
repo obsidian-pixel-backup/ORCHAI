@@ -204,20 +204,13 @@ function App() {
 
     setChats((prevChats) => {
       const filtered = prevChats.filter((c) => c.id !== id);
-      if (filtered.length === 0) {
-        return [INITIAL_CHAT];
+      const result = filtered.length === 0 ? [INITIAL_CHAT] : filtered;
+      // Derive new active chat from the up-to-date filtered list, not stale closure
+      if (activeChatId === id) {
+        setActiveChatId(result[0].id);
       }
-      return filtered;
+      return result;
     });
-
-    if (activeChatId === id) {
-      const remaining = chats.filter((c) => c.id !== id);
-      if (remaining.length > 0) {
-        setActiveChatId(remaining[0].id);
-      } else {
-        setActiveChatId('default');
-      }
-    }
   };
 
   // Branch a chat session from a specific message

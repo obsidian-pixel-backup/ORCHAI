@@ -147,10 +147,8 @@ class ContextOrchestrator:
             "If the user asks for the current time, date, or day, you MUST execute the get_system_time tool. Do not claim you cannot access the time.\n"
             "Use the provided tools appropriately instead of guessing. For example, use `list_directory` before attempting to read a file to ensure it exists."
             "\n\n"
-            "IMPORTANT: Before answering, you MUST perform thorough step-by-step reasoning. "
-            "Wrap your entire internal reasoning process inside <think>...</think> tags. "
-            "After the closing </think> tag, provide your final polished response. "
-            "The user sees both your reasoning and your answer, so make the reasoning clear and structured."
+            "IMPORTANT: Always think step-by-step before answering. "
+            "Your internal reasoning is visible to the user, so make it clear and structured."
         )
         
         # Bookkeeping
@@ -382,7 +380,7 @@ class ContextOrchestrator:
             
         for msg in messages_to_copy:
             images = msg.get("images")
-            self.add_message(msg["role"], msg["content"], msg["id"], images)
+            self.add_message(msg["role"], msg["content"], msg["id"], images, tool_calls=msg.get("tool_calls"), name=msg.get("name"))
 
     def set_config(self, active_window_limit: int, dynamic_consolidation: bool, semantic_recall: bool):
         self.active_window_limit = active_window_limit
@@ -438,7 +436,10 @@ class ContextOrchestrator:
         logger.info(f"Triggering memory consolidation background task for {len(new_archived)} messages.")
         
         current_gen = self._consolidation_generation
-        asyncio.create_task(self._run_consolidation(new_archived, model, len(archived) - 1, current_gen))
+        # Use the actual index in self._messages for the last archived message
+        last_archived_id = archived[-1]["id"]
+        last_archived_global_idx = id_to_idx.get(last_archived_id, len(self._messages) - 1)
+        asyncio.create_task(self._run_consolidation(new_archived, model, last_archived_global_idx, current_gen))
 
     async def _run_consolidation(self, new_messages: List[Dict[str, Any]], model: str, new_up_to_idx: int, generation: int):
         try:

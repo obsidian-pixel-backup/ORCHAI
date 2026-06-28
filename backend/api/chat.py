@@ -370,6 +370,8 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
+            chronological_thinking_segments = []
+
             while True:
                 # 4. Formulate the official Ollama payload
                 ollama_payload = {
@@ -379,8 +381,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     "options": merged_options,
                     "think": True,
                 }
-                if research_topic:
-                    ollama_payload["tools"] = tools
+                ollama_payload["tools"] = tools
 
                 full_content = ""
                 full_thinking = ""
@@ -538,16 +539,15 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             
                         elif func_name in ["read_file", "write_file", "list_directory", "run_command"]:
                             import system_tools
-                            result_content = "Tool failed to execute."
                             try:
                                 if func_name == "read_file":
-                                    result_content = system_tools.read_file(func_args.get("filepath", ""))
+                                    result_content = await asyncio.to_thread(system_tools.read_file, func_args.get("filepath", ""))
                                 elif func_name == "write_file":
-                                    result_content = system_tools.write_file(func_args.get("filepath", ""), func_args.get("content", ""))
+                                    result_content = await asyncio.to_thread(system_tools.write_file, func_args.get("filepath", ""), func_args.get("content", ""))
                                 elif func_name == "list_directory":
-                                    result_content = system_tools.list_directory(func_args.get("path", ""))
+                                    result_content = await asyncio.to_thread(system_tools.list_directory, func_args.get("path", ""))
                                 elif func_name == "run_command":
-                                    result_content = system_tools.run_command(func_args.get("command", ""))
+                                    result_content = await asyncio.to_thread(system_tools.run_command, func_args.get("command", ""))
                             except Exception as e:
                                 result_content = f"Error executing {func_name}: {str(e)}"
                                 
@@ -577,6 +577,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             "output": display_output
                         }
                         io_message = f"\n\n```tool_execution\n{json.dumps(tool_data)}\n```\n\n"
+
+                    # Preserve this iteration's thinking before the loop resets it
+                    if full_thinking:
+                        chronological_thinking_segments.append(full_thinking)
                         await manager.send_personal_message(
                             json.dumps({
                                 "type": "stream",
@@ -613,7 +617,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             "id": msg_id,
                             "role": "model",
                             "content": "",
-                            "thinking": full_thinking,
+                            "thinking": ("\n\n---\n\n".join(chronological_thinking_segments + ([full_thinking] if full_thinking else []))) if chronological_thinking_segments else full_thinking,
                             "done": True,
                             "stats": {
                                 "tokens": final_eval_count,

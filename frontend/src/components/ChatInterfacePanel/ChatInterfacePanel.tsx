@@ -428,6 +428,7 @@ export function ChatInterfacePanel({
     
     setMessages(updatedMessages);
     setIsStreaming(true);
+    isStreamingRef.current = true;
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       const conversationHistory = updatedMessages.map(({ role, content: c, images: img, documents: docs }) => {
@@ -448,11 +449,11 @@ export function ChatInterfacePanel({
       wsRef.current.send(
         JSON.stringify({
           session_id: chatId,
-          model: selectedModel,
+          model: selectedModelRef.current,
           messages: conversationHistory,
           options: {
-            temperature,
-            num_predict: maxTokens,
+            temperature: temperatureRef.current,
+            num_predict: maxTokensRef.current,
           },
         })
       );
