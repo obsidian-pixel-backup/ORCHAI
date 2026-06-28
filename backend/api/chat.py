@@ -274,17 +274,21 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         {
             "type": "function",
             "function": {
-                "name": "research_topic",
-                "description": "Performs a live web search and stealth scraping to gather deep research on a topic. Use this when the user asks about current events, specific recent information, or when you need comprehensive web research.",
+                "name": "delegate_to_subagent",
+                "description": "Delegates a complex task to a specialized sub-agent. Use 'web-researcher' for comprehensive internet research tasks.",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "query": {
+                        "role": {
                             "type": "string",
-                            "description": "The search query to research."
+                            "description": "The role of the sub-agent (e.g., 'web-researcher')."
+                        },
+                        "task": {
+                            "type": "string",
+                            "description": "The detailed task for the sub-agent to accomplish."
                         }
                     },
-                    "required": ["query"]
+                    "required": ["role", "task"]
                 }
             }
         },
@@ -376,16 +380,16 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
     msg_id = f"msg-{id(payload)}"
 
-    # Safely import the web_research tool
+    # Safely import the sub_agents module
     try:
         import sys
         import os
         backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if backend_dir not in sys.path:
             sys.path.append(backend_dir)
-        from web_research import research_topic
+        from sub_agents import delegate_to_subagent
     except ImportError:
-        research_topic = None
+        delegate_to_subagent = None
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
@@ -514,23 +518,24 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         func_name = tc.get("function", {}).get("name")
                         func_args = tc.get("function", {}).get("arguments", {})
                         
-                        if func_name == "research_topic":
-                            query = func_args.get("query", "")
+                        if func_name == "delegate_to_subagent":
+                            role = func_args.get("role", "")
+                            task = func_args.get("task", "")
                             
                             await manager.send_personal_message(
                                 json.dumps({
                                     "type": "tool_execution",
                                     "id": msg_id,
                                     "tool": func_name,
-                                    "args": {"query": query}
+                                    "args": {"role": role, "task": task}
                                 }),
                                 websocket,
                             )
                             
-                            if research_topic:
-                                result_content = await research_topic(query)
+                            if delegate_to_subagent:
+                                result_content = await delegate_to_subagent(role, task, model=model)
                             else:
-                                result_content = "Error: web_research module could not be loaded."
+                                result_content = "Error: sub_agents module could not be loaded."
                                 
                             orch.add_message(role="tool", content=result_content, name=func_name)
                             orchestrated_messages.append({

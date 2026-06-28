@@ -15,8 +15,8 @@
 - [x] **Tool Usage Visualization**: Enhanced the Chat Message component to chronologically visualize tool execution payloads and commands.
 
 ## High Priority
-- [ ] **Prompt Tuning**: Refine the memory consolidation prompts in `context_engine.py` to improve how the model compresses old dialogue into dense knowledge artifacts.
-- [ ] **Sub-agents**: Explore adding hierarchical sub-agents for specialized tasks (e.g., a dedicated web-researcher agent that feeds data back to the primary orchestrator).
+- [x] **Prompt Tuning**: Refine the memory consolidation prompts in `context_engine.py` to improve how the model compresses old dialogue into dense knowledge artifacts.
+- [x] **Sub-agents**: Explore adding hierarchical sub-agents for specialized tasks (e.g., a dedicated web-researcher agent that feeds data back to the primary orchestrator).
 
 ## Low Priority / Polish
 - [ ] **Test Coverage**: Expand the `test_*.py` suite to cover edge cases in WebSocket disconnection and reconnection.

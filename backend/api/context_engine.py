@@ -454,16 +454,22 @@ class ContextOrchestrator:
 
             prompt = (
                 f"You are the Cognitive Memory Consolidation module of ORCHAI.\n"
-                f"Your task is to update the current 'Cognitive World State' with new chat messages.\n\n"
+                f"Your objective is to seamlessly integrate new conversation history into the existing 'Cognitive World State'.\n\n"
                 f"=== Current Cognitive World State ===\n"
                 f"{self.world_state or 'No previous state. This is the start of the conversation.'}\n\n"
                 f"=== New Messages to Merge ===\n"
                 f"{formatted_logs}\n"
                 f"Instructions:\n"
-                f"1. Generate a revised, unified, highly structured 'Cognitive World State' in clean Markdown.\n"
-                f"2. Keep it dense, clear, and extremely concise (strictly under 300 words total).\n"
-                f"3. Focus on: User details (OS, stack), key decisions, architectural rules established, and ongoing tasks.\n"
-                f"4. Do NOT include any conversational intro/outro or conversational fluff. ONLY return the revised markdown world state."
+                f"1. Update the 'Cognitive World State' by incorporating important information from the new messages.\n"
+                f"2. Discard ephemeral or irrelevant conversational details (e.g., greetings, thinking processes, minor errors quickly corrected).\n"
+                f"3. Maintain a dense, highly structured Markdown format.\n"
+                f"4. Organize information into logical sections such as:\n"
+                f"   - User Profile & Environment (OS, stack, preferences)\n"
+                f"   - Project Architecture & Core Constraints\n"
+                f"   - Ongoing Tasks & Objectives\n"
+                f"   - Key Decisions & Discoveries\n"
+                f"5. The final output must be strictly under 400 words, serving as a compressed knowledge artifact.\n"
+                f"6. Do NOT include any conversational intro/outro. Output ONLY the raw markdown of the revised world state."
             )
 
             payload = {
