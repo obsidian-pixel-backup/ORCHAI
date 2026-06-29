@@ -58,7 +58,11 @@ async def transcribe_audio(audio: UploadFile = File(...)):
 
         audio_io = io.BytesIO(audio_bytes)
 
-        segments, _info = model.transcribe(audio_io, beam_size=5)
+        segments, _info = model.transcribe(
+            audio_io, 
+            beam_size=5,
+            initial_prompt="Hello ORCHAI. Can you get me the Cape Town weather for today?"
+        )
         text = " ".join([segment.text for segment in segments]).strip()
 
         logger.info(f"Transcribed: {text}")

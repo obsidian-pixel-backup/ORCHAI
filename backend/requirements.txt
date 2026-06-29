@@ -13,3 +13,4 @@ pygetwindow
 Pillow
 PyAudio
 python-multipart
+psutil

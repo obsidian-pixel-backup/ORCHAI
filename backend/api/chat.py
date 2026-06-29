@@ -326,8 +326,8 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         {
             "type": "function",
             "function": {
-                "name": "get_system_time",
-                "description": "Returns the current local system time, date, and timezone.",
+                "name": "get_system_info",
+                "description": "Returns detailed system information including current local time, date, timezone, OS, processor, and Python version.",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -694,10 +694,30 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                 "name": func_name
                             })
                             
-                        elif func_name == "get_system_time":
+                        elif func_name == "get_system_info":
                             import datetime
+                            import platform
+                            import sys
+                            try:
+                                import psutil
+                                ram = psutil.virtual_memory()
+                                ram_info = f"RAM: {round(ram.total / (1024**3), 2)} GB Total ({round(ram.available / (1024**3), 2)} GB Available)"
+                            except ImportError:
+                                ram_info = "RAM: Information unavailable (psutil not installed)"
+                                
                             time_str = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-                            result_content = f"The current system date and time is: {time_str}"
+                            os_info = f"{platform.system()} {platform.release()} (Version: {platform.version()})"
+                            
+                            info = [
+                                f"Current System Time: {time_str}",
+                                f"OS: {os_info}",
+                                f"Architecture: {platform.machine()}",
+                                f"Processor: {platform.processor()}",
+                                f"Python Version: {sys.version.split()[0]}",
+                                ram_info
+                            ]
+                            result_content = "System Information:\\n" + "\\n".join(info)
+                            
                             orch.add_message(role="tool", content=result_content, name=func_name)
                             orchestrated_messages.append({
                                 "role": "tool",

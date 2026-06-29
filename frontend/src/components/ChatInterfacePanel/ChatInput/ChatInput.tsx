@@ -84,12 +84,15 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration }: Chat
     }
   }, []);
 
-  /** Create and start a fresh MediaRecorder on the existing stream. */
-  const startNewRecorderSegment = useCallback(() => {
+  /** Create and start a continuous MediaRecorder on the existing stream. */
+  const startRecorder = useCallback(() => {
     const stream = streamRef.current;
     if (!stream) return;
 
     audioChunksRef.current = [];
+
+    // Keep track of transcription sequence to ignore outdated responses
+    let transcribingSequence = 0;
 
     const recorder = new MediaRecorder(
       stream,
@@ -99,61 +102,64 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration }: Chat
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) {
         audioChunksRef.current.push(event.data);
+        
+        // Background live transcription (don't block)
+        if (!isStoppingRef.current) {
+          transcribingSequence++;
+          const currentSeq = transcribingSequence;
+          const blob = new Blob(audioChunksRef.current, { type: mimeTypeRef.current || 'audio/webm' });
+          transcribeBlob(blob).then(text => {
+            // Only update if this is the latest requested transcription and we are still listening
+            if (currentSeq === transcribingSequence && isListeningRef.current && text) {
+              accumulatedTextRef.current = text;
+              setInputValue(text);
+            }
+          }).catch(err => console.error("Live transcription error:", err));
+        }
       }
     };
 
     recorder.onstop = async () => {
+      transcribingSequence++; // Invalidate any pending live transcriptions
       const chunks = audioChunksRef.current;
       audioChunksRef.current = [];
       const blob = new Blob(chunks, { type: mimeTypeRef.current || 'audio/webm' });
 
-      const isFinalSegment = isStoppingRef.current;
-
-      // Transcribe this segment
+      // Transcribe the full blob
       const segmentText = await transcribeBlob(blob);
       if (segmentText) {
-        accumulatedTextRef.current = accumulatedTextRef.current
-          ? `${accumulatedTextRef.current} ${segmentText}`
-          : segmentText;
-        // Update the input field live
-        setInputValue(accumulatedTextRef.current);
+        accumulatedTextRef.current = segmentText;
       }
 
-      if (isFinalSegment) {
-        // Done — auto-send the full accumulated text
-        const finalText = accumulatedTextRef.current.trim();
-        if (finalText) {
-          onSendMessageRef.current(finalText, [], []);
-          setInputValue('');
-        }
-        // Release mic
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
-          streamRef.current = null;
-        }
-        accumulatedTextRef.current = '';
-        setIsTranscribing(false);
-      } else if (isListeningRef.current) {
-        // Start the next segment
-        startNewRecorderSegment();
+      // Done — auto-send the full accumulated text
+      const finalText = accumulatedTextRef.current.trim();
+      if (finalText) {
+        onSendMessageRef.current(finalText, [], []);
+        setInputValue('');
       }
+      
+      // Release mic
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      accumulatedTextRef.current = '';
+      setIsTranscribing(false);
     };
 
     mediaRecorderRef.current = recorder;
-    recorder.start();
+    recorder.start(1000);
   }, [transcribeBlob]);
-
-  /** Cycle the recorder: stop current segment → onstop handler transcribes it and starts next. */
-  const cycleRecorder = useCallback(() => {
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state === 'recording') {
-      recorder.stop(); // triggers onstop which starts next segment
-    }
-  }, []);
 
   const startRecording = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: { 
+          echoCancellation: true, 
+          noiseSuppression: true, 
+          autoGainControl: true 
+        } 
+      });
       streamRef.current = stream;
       audioChunksRef.current = [];
       accumulatedTextRef.current = '';
@@ -167,20 +173,16 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration }: Chat
           ? 'audio/webm'
           : '';
 
-      // Start the first recording segment
-      startNewRecorderSegment();
+      // Start the continuous recording
+      startRecorder();
       setIsListening(true);
-
-      // Cycle every 3 seconds for live transcription
-      segmentIntervalRef.current = setInterval(cycleRecorder, 3000);
     } catch (err) {
       console.error('Microphone access error:', err);
       alert('Could not access microphone. Please check your permissions.');
     }
-  }, [startNewRecorderSegment, cycleRecorder]);
+  }, [startRecorder]);
 
   const stopRecording = useCallback(() => {
-    // Stop the cycling interval
     if (segmentIntervalRef.current) {
       clearInterval(segmentIntervalRef.current);
       segmentIntervalRef.current = null;
@@ -191,12 +193,10 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration }: Chat
     setIsListening(false);
     setIsTranscribing(true);
 
-    // Stop the current recorder → onstop will handle final transcription + auto-send
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state === 'recording') {
       recorder.stop();
     } else {
-      // Edge case: recorder already stopped, just clean up
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
@@ -306,7 +306,9 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration }: Chat
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSend();
+      if (!isListening && !isTranscribing) {
+        handleSend();
+      }
     }
   };
 
@@ -429,12 +431,14 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration }: Chat
               </svg>
             </button>
           )}
-          <button className="send-btn" title={isStreaming ? "Queue message" : "Send message"} onClick={handleSend}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"></line>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-            </svg>
-          </button>
+          {!isListening && !isTranscribing && (
+            <button className="send-btn" title={isStreaming ? "Queue message" : "Send message"} onClick={handleSend}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          )}
         </div>
       </div>
     </div>

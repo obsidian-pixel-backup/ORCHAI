@@ -147,7 +147,7 @@ class ContextOrchestrator:
             "- Coding & Execution: For running scripts, compiling code, or system-level tasks, use `run_command` (terminal).\n"
             "Only use `delegate_to_subagent` for complex, multi-step tasks requiring deep research. "
             "When faced with a query requiring real-time data, current events, time/date, missing knowledge, system information, or file manipulation, you MUST think in terms of skills and tool usage. "
-            "If the user asks for the current time, date, or day, you MUST execute the get_system_time tool. Do not claim you cannot access the time.\n"
+            "If the user asks for the current time, date, or day, or system information, you MUST execute the get_system_info tool. Do not claim you cannot access the time or system specs.\n"
             "Use the provided tools appropriately instead of guessing. For example, use `list_directory` before attempting to read a file to ensure it exists.\n"
             "When using `run_command`, remember the host OS is Windows (PowerShell). DO NOT use Unix utilities like `curl`, `grep`, `cat`, or `ls`. Use PowerShell equivalents (e.g., `Invoke-RestMethod` instead of `curl`).\n"
             "DO NOT hallucinate or guess tool names. You can ONLY use the exact tools provided in your tool/function list."
