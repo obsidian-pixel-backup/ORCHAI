@@ -3,34 +3,33 @@ import logging
 import time
 
 try:
-    import speech_recognition as sr
+    import sounddevice as sd
+    import numpy as np
     from faster_whisper import WhisperModel
     import io
     AUDIO_AVAILABLE = True
 except ImportError:
-    sr = None
+    sd = None
+    np = None
     WhisperModel = None
     AUDIO_AVAILABLE = False
 
 logger = logging.getLogger("orchai.sensory.audio")
 
 class AudioListener:
-    def __init__(self, energy_threshold=300):
+    def __init__(self, energy_threshold=0.005):
         if AUDIO_AVAILABLE:
-            self.recognizer = sr.Recognizer()
-            self.recognizer.energy_threshold = energy_threshold
+            self.energy_threshold = energy_threshold
             logger.info("Loading faster-whisper model...")
-            # Use small or base model, CPU by default for broader compatibility
             self.whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8")
             logger.info("Whisper model loaded.")
         else:
-            self.recognizer = None
             self.whisper_model = None
             logger.warning("Audio dependencies missing. AudioListener will be disabled.")
         self.running = False
         self.audio_enabled = False
         self.thread = None
-        self.on_speech_detected = None  # Callback function for when speech is heard
+        self.on_speech_detected = None
 
     def start(self):
         if self.running:
@@ -70,42 +69,49 @@ class AudioListener:
         self.on_speech_detected = callback
 
     def _listen_loop(self):
-        # We try to use the default microphone
+        samplerate = 16000
+        chunk_duration = 0.5 # seconds
+        chunk_samples = int(samplerate * chunk_duration)
+        
         while self.running:
             if not self.audio_enabled:
                 time.sleep(2.0)
                 continue
                 
             try:
-                with sr.Microphone() as source:
-                    self.recognizer.adjust_for_ambient_noise(source, duration=1)
+                with sd.InputStream(samplerate=samplerate, channels=1, dtype='float32') as stream:
                     logger.info("Calibrated for ambient noise. Listening...")
+                    audio_buffer = []
+                    silence_frames = 0
+                    max_silence_frames = 3 # 1.5 seconds of silence
                     
                     while self.running and self.audio_enabled:
-                        try:
-                            # Listen for speech with a timeout so we can exit the loop cleanly
-                            audio = self.recognizer.listen(source, timeout=2.0, phrase_time_limit=10.0)
+                        chunk, overflowed = stream.read(chunk_samples)
+                        
+                        rms = np.sqrt(np.mean(chunk**2))
+                        if rms > self.energy_threshold:
+                            audio_buffer.append(chunk)
+                            silence_frames = 0
+                        elif len(audio_buffer) > 0:
+                            audio_buffer.append(chunk)
+                            silence_frames += 1
                             
-                            # Process audio in a separate thread to not block listening
-                            threading.Thread(target=self._process_audio, args=(audio,), daemon=True).start()
-                            
-                        except sr.WaitTimeoutError:
-                            pass # No speech detected in the timeout period
-                        except Exception as e:
-                            logger.error(f"Error listening to audio: {e}")
-                            time.sleep(1)
+                            if silence_frames >= max_silence_frames:
+                                # We have a complete phrase
+                                audio_data = np.concatenate(audio_buffer).flatten()
+                                audio_buffer = []
+                                silence_frames = 0
+                                
+                                # Process audio in a separate thread
+                                threading.Thread(target=self._process_audio, args=(audio_data,), daemon=True).start()
             except Exception as e:
                 logger.error(f"Microphone error: {e}")
                 time.sleep(5.0)
 
-    def _process_audio(self, audio):
+    def _process_audio(self, audio_data):
         try:
-            # Convert SpeechRecognition AudioData to WAV file-like object
-            wav_bytes = audio.get_wav_data()
-            wav_io = io.BytesIO(wav_bytes)
-            
             # Transcribe locally with faster-whisper
-            segments, info = self.whisper_model.transcribe(wav_io, beam_size=5)
+            segments, info = self.whisper_model.transcribe(audio_data, beam_size=5)
             
             # Join all segments
             text = " ".join([segment.text for segment in segments]).strip()

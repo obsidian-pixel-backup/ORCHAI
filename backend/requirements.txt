@@ -11,3 +11,5 @@ SpeechRecognition
 mss
 pygetwindow
 Pillow
+PyAudio
+python-multipart

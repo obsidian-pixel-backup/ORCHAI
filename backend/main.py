@@ -152,7 +152,7 @@ def get_audio_status():
     if not SENSORY_MODULES_LOADED or not audio_listener:
         return {"enabled": False, "installed": False}
     # If AUDIO_AVAILABLE is False in audio_listener, we can assume not installed
-    installed = getattr(audio_listener, 'recognizer', None) is not None
+    installed = getattr(audio_listener, 'whisper_model', None) is not None
     return {"enabled": audio_listener.audio_enabled, "installed": installed}
 
 @app.post("/api/audio/toggle")
@@ -160,7 +160,7 @@ def toggle_audio_status():
     if not SENSORY_MODULES_LOADED or not audio_listener:
         return {"enabled": False, "installed": False}
     audio_listener.audio_enabled = not audio_listener.audio_enabled
-    installed = getattr(audio_listener, 'recognizer', None) is not None
+    installed = getattr(audio_listener, 'whisper_model', None) is not None
     return {"enabled": audio_listener.audio_enabled, "installed": installed}
 
 if __name__ == "__main__":
