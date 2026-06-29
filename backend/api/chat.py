@@ -879,12 +879,33 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     break # Exit the while True loop
 
     except httpx.ConnectError:
+        try:
+            import subprocess
+            import platform
+            print("Starting Ollama background server (internal fallback)...")
+            if platform.system() == "Windows":
+                subprocess.Popen(
+                    ["ollama", "serve"],
+                    creationflags=subprocess.CREATE_NO_WINDOW | 0x00000008,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+            else:
+                subprocess.Popen(
+                    ["ollama", "serve"],
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+        except Exception as e:
+            print(f"Failed to start Ollama on ConnectError: {e}")
+            
         await manager.send_personal_message(
             json.dumps({
                 "type": "error",
                 "id": msg_id,
                 "role": "model",
-                "content": "Could not connect to Ollama. Make sure Ollama is running (run `ollama serve` in a terminal).",
+                "content": "Could not connect to Ollama. We've initiated the Ollama service in the background. Please try your request again in a few seconds.",
                 "done": True,
             }),
             websocket,
@@ -945,7 +966,16 @@ async def list_models():
                 return {"models": list(models_info)}
             return {"models": [], "error": f"Ollama returned status {response.status_code}"}
     except httpx.ConnectError:
-        return {"models": [], "error": "Ollama is not running"}
+        try:
+            import subprocess
+            import platform
+            if platform.system() == "Windows":
+                subprocess.Popen(["ollama", "serve"], creationflags=subprocess.CREATE_NO_WINDOW | 0x00000008, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                subprocess.Popen(["ollama", "serve"], start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        return {"models": [], "error": "Ollama is not running. We've initiated the service in the background, please wait a moment."}
     except Exception as e:
         return {"models": [], "error": str(e)}
 

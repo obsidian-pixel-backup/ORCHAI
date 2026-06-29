@@ -60,6 +60,39 @@ audio_listener = None
 screen_watcher = None
 main_loop = None
 
+import subprocess
+import platform
+import urllib.request
+
+def ensure_ollama_running():
+    """Ensure Ollama is running in the background as a fallback."""
+    try:
+        urllib.request.urlopen("http://127.0.0.1:11434/", timeout=1)
+        return True
+    except Exception:
+        pass
+
+    print("Starting Ollama background server (internal fallback)...")
+    try:
+        if platform.system() == "Windows":
+            subprocess.Popen(
+                ["ollama", "serve"],
+                creationflags=subprocess.CREATE_NO_WINDOW | 0x00000008, # DETACHED_PROCESS
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        else:
+            subprocess.Popen(
+                ["ollama", "serve"],
+                start_new_session=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        return True
+    except Exception as e:
+        print(f"Failed to start Ollama: {e}")
+        return False
+
 def on_speech_detected(text: str):
     """Callback for when the microphone picks up speech."""
     if not main_loop: return
@@ -88,6 +121,9 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle."""
     logger = logging.getLogger("orchai")
     logger.info("ORCHAI Backend starting up...")
+    
+    # Internal fallback to ensure Ollama is running
+    ensure_ollama_running()
     
     global audio_listener, screen_watcher, main_loop
     main_loop = asyncio.get_running_loop()
