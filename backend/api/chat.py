@@ -429,6 +429,138 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
             chronological_thinking_segments = []
 
+            async def _execute_tool(func_name: str, func_args: dict) -> str:
+                if func_name == "delegate_to_subagent":
+                    role = func_args.get("role", "")
+                    task = func_args.get("task", "")
+                    
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_execution",
+                            "id": msg_id,
+                            "tool": func_name,
+                            "args": {"role": role, "task": task}
+                        }),
+                        websocket,
+                    )
+                    
+                    if delegate_to_subagent:
+                        return await delegate_to_subagent(role, task, model=model)
+                    return "Error: sub_agents module could not be loaded."
+                    
+                elif func_name == "search_web":
+                    query = func_args.get("query", "")
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_execution",
+                            "id": msg_id,
+                            "tool": func_name,
+                            "args": {"query": query}
+                        }),
+                        websocket,
+                    )
+                    if search_web:
+                        res = await search_web(query)
+                        return json.dumps(res)
+                    return "Error: web_research module could not be loaded."
+                    
+                elif func_name == "scrape_page":
+                    url = func_args.get("url", "")
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_execution",
+                            "id": msg_id,
+                            "tool": func_name,
+                            "args": {"url": url}
+                        }),
+                        websocket,
+                    )
+                    if scrape_page:
+                        return await scrape_page(url)
+                    return "Error: web_research module could not be loaded."
+                    
+                elif func_name == "get_system_info":
+                    import datetime
+                    import platform
+                    import sys
+                    try:
+                        import psutil
+                        ram = psutil.virtual_memory()
+                        ram_info = f"RAM: {round(ram.total / (1024**3), 2)} GB Total ({round(ram.available / (1024**3), 2)} GB Available)"
+                    except ImportError:
+                        ram_info = "RAM: Information unavailable (psutil not installed)"
+                        
+                    time_str = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
+                    os_info = f"{platform.system()} {platform.release()} (Version: {platform.version()})"
+                    
+                    info = [
+                        f"Current System Time: {time_str}",
+                        f"OS: {os_info}",
+                        f"Architecture: {platform.machine()}",
+                        f"Processor: {platform.processor()}",
+                        f"Python Version: {sys.version.split()[0]}",
+                        ram_info
+                    ]
+                    return "System Information:\\n" + "\\n".join(info)
+                    
+                elif func_name == "run_command":
+                    command = func_args.get("command", "")
+                    tool_approval_events[msg_id] = asyncio.Event()
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_approval_request",
+                            "id": msg_id,
+                            "tool": func_name,
+                            "command": command
+                        }),
+                        websocket
+                    )
+                    await tool_approval_events[msg_id].wait()
+                    approved = tool_approval_results.get(msg_id, False)
+                    del tool_approval_events[msg_id]
+                    if msg_id in tool_approval_results:
+                        del tool_approval_results[msg_id]
+                        
+                    if not approved:
+                        return f"Error: User denied permission to run command: {command}"
+                    else:
+                        await manager.send_personal_message(
+                            json.dumps({
+                                "type": "tool_execution",
+                                "id": msg_id,
+                                "tool": func_name,
+                                "args": {"command": command}
+                            }),
+                            websocket
+                        )
+                        from system_tools import run_command
+                        try:
+                            return await asyncio.to_thread(run_command, command)
+                        except Exception as e:
+                            return f"Error executing {func_name}: {str(e)}"
+                            
+                elif func_name in ["read_file", "write_file", "list_directory"]:
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_execution",
+                            "id": msg_id,
+                            "tool": func_name,
+                            "args": func_args
+                        }),
+                        websocket
+                    )
+                    from system_tools import read_file, write_file, list_directory
+                    try:
+                        if func_name == "read_file":
+                            return await asyncio.to_thread(read_file, func_args.get("filepath", ""))
+                        elif func_name == "write_file":
+                            return await asyncio.to_thread(write_file, func_args.get("filepath", ""), func_args.get("content", ""))
+                        elif func_name == "list_directory":
+                            return await asyncio.to_thread(list_directory, func_args.get("path", ""))
+                    except Exception as e:
+                        return f"Error executing {func_name}: {str(e)}"
+                return f"Error: Tool {func_name} not recognized."
+
             while True:
                 # 4. Formulate the official Ollama payload
                 ollama_payload = {
@@ -617,200 +749,13 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         func_name = tc.get("function", {}).get("name")
                         func_args = tc.get("function", {}).get("arguments", {})
                         
-                        if func_name == "delegate_to_subagent":
-                            role = func_args.get("role", "")
-                            task = func_args.get("task", "")
-                            
-                            await manager.send_personal_message(
-                                json.dumps({
-                                    "type": "tool_execution",
-                                    "id": msg_id,
-                                    "tool": func_name,
-                                    "args": {"role": role, "task": task}
-                                }),
-                                websocket,
-                            )
-                            
-                            if delegate_to_subagent:
-                                result_content = await delegate_to_subagent(role, task, model=model)
-                            else:
-                                result_content = "Error: sub_agents module could not be loaded."
-                                
-                            orch.add_message(role="tool", content=result_content, name=func_name)
-                            orchestrated_messages.append({
-                                "role": "tool",
-                                "content": result_content,
-                                "name": func_name
-                            })
-                            
-                        elif func_name == "search_web":
-                            query = func_args.get("query", "")
-                            
-                            await manager.send_personal_message(
-                                json.dumps({
-                                    "type": "tool_execution",
-                                    "id": msg_id,
-                                    "tool": func_name,
-                                    "args": {"query": query}
-                                }),
-                                websocket,
-                            )
-                            
-                            if search_web:
-                                res = await search_web(query)
-                                result_content = json.dumps(res)
-                            else:
-                                result_content = "Error: web_research module could not be loaded."
-                                
-                            orch.add_message(role="tool", content=result_content, name=func_name)
-                            orchestrated_messages.append({
-                                "role": "tool",
-                                "content": result_content,
-                                "name": func_name
-                            })
-                            
-                        elif func_name == "scrape_page":
-                            url = func_args.get("url", "")
-                            
-                            await manager.send_personal_message(
-                                json.dumps({
-                                    "type": "tool_execution",
-                                    "id": msg_id,
-                                    "tool": func_name,
-                                    "args": {"url": url}
-                                }),
-                                websocket,
-                            )
-                            
-                            if scrape_page:
-                                result_content = await scrape_page(url)
-                            else:
-                                result_content = "Error: web_research module could not be loaded."
-                                
-                            orch.add_message(role="tool", content=result_content, name=func_name)
-                            orchestrated_messages.append({
-                                "role": "tool",
-                                "content": result_content,
-                                "name": func_name
-                            })
-                            
-                        elif func_name == "get_system_info":
-                            import datetime
-                            import platform
-                            import sys
-                            try:
-                                import psutil
-                                ram = psutil.virtual_memory()
-                                ram_info = f"RAM: {round(ram.total / (1024**3), 2)} GB Total ({round(ram.available / (1024**3), 2)} GB Available)"
-                            except ImportError:
-                                ram_info = "RAM: Information unavailable (psutil not installed)"
-                                
-                            time_str = datetime.datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-                            os_info = f"{platform.system()} {platform.release()} (Version: {platform.version()})"
-                            
-                            info = [
-                                f"Current System Time: {time_str}",
-                                f"OS: {os_info}",
-                                f"Architecture: {platform.machine()}",
-                                f"Processor: {platform.processor()}",
-                                f"Python Version: {sys.version.split()[0]}",
-                                ram_info
-                            ]
-                            result_content = "System Information:\\n" + "\\n".join(info)
-                            
-                            orch.add_message(role="tool", content=result_content, name=func_name)
-                            orchestrated_messages.append({
-                                "role": "tool",
-                                "content": result_content,
-                                "name": func_name
-                            })
-                            
-                        elif func_name == "run_command":
-                            command = func_args.get("command", "")
-                            
-                            # Ask for approval
-                            tool_approval_events[msg_id] = asyncio.Event()
-                            await manager.send_personal_message(
-                                json.dumps({
-                                    "type": "tool_approval_request",
-                                    "id": msg_id,
-                                    "tool": func_name,
-                                    "command": command
-                                }),
-                                websocket
-                            )
-                            
-                            # Wait for frontend approval
-                            await tool_approval_events[msg_id].wait()
-                            approved = tool_approval_results.get(msg_id, False)
-                            
-                            # Cleanup state
-                            del tool_approval_events[msg_id]
-                            if msg_id in tool_approval_results:
-                                del tool_approval_results[msg_id]
-                                
-                            if not approved:
-                                result_content = f"Error: User denied permission to run command: {command}"
-                            else:
-                                await manager.send_personal_message(
-                                    json.dumps({
-                                        "type": "tool_execution",
-                                        "id": msg_id,
-                                        "tool": func_name,
-                                        "args": {"command": command}
-                                    }),
-                                    websocket
-                                )
-                                from system_tools import run_command
-                                try:
-                                    result_content = await asyncio.to_thread(run_command, command)
-                                except Exception as e:
-                                    result_content = f"Error executing {func_name}: {str(e)}"
-                                
-                            orch.add_message(role="tool", content=result_content, name=func_name)
-                            orchestrated_messages.append({
-                                "role": "tool",
-                                "content": result_content,
-                                "name": func_name
-                            })
-                            
-                        elif func_name in ["read_file", "write_file", "list_directory"]:
-                            # Safe tools just emit an execution event
-                            await manager.send_personal_message(
-                                json.dumps({
-                                    "type": "tool_execution",
-                                    "id": msg_id,
-                                    "tool": func_name,
-                                    "args": func_args
-                                }),
-                                websocket
-                            )
-                            
-                            from system_tools import read_file, write_file, list_directory
-                            try:
-                                if func_name == "read_file":
-                                    result_content = await asyncio.to_thread(read_file, func_args.get("filepath", ""))
-                                elif func_name == "write_file":
-                                    result_content = await asyncio.to_thread(write_file, func_args.get("filepath", ""), func_args.get("content", ""))
-                                elif func_name == "list_directory":
-                                    result_content = await asyncio.to_thread(list_directory, func_args.get("path", ""))
-                            except Exception as e:
-                                result_content = f"Error executing {func_name}: {str(e)}"
-                                
-                            orch.add_message(role="tool", content=result_content, name=func_name)
-                            orchestrated_messages.append({
-                                "role": "tool",
-                                "content": result_content,
-                                "name": func_name
-                            })
-                        else:
-                            result_content = f"Error: Tool {func_name} not recognized."
-                            orch.add_message(role="tool", content=result_content, name=func_name)
-                            orchestrated_messages.append({
-                                "role": "tool",
-                                "content": result_content,
-                                "name": func_name
-                            })
+                        result_content = await _execute_tool(func_name, func_args)
+                        orch.add_message(role="tool", content=result_content, name=func_name)
+                        orchestrated_messages.append({
+                            "role": "tool",
+                            "content": result_content,
+                            "name": func_name
+                        })
 
                         display_output = str(result_content)
 
@@ -843,6 +788,68 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         chronological_thinking_segments.append(full_thinking)
                     
                     # Continue the while loop to send the tool results back to Ollama
+                    continue
+
+                # Check for Ornith Python harness
+                import re
+                harness_match = re.search(r'```python\n(.*?)```', full_content, re.DOTALL)
+                if "ornith" in model.lower() and harness_match and not full_tool_calls:
+                    harness_code = harness_match.group(1).strip()
+                    
+                    # Notify frontend
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "stream",
+                            "id": msg_id,
+                            "role": "model",
+                            "content": "\n\n> [!NOTE]\n> **Executing Self-Scaffold Harness...**\n",
+                            "done": False,
+                            "stats": {
+                                "tokens": token_count,
+                                "tokens_per_second": 0,
+                                "elapsed": 0,
+                            }
+                        }),
+                        websocket,
+                    )
+                    
+                    from scaffold_runner import run_scaffold
+                    
+                    async def tool_executor_coro(tool_name: str, args: dict) -> str:
+                        return await _execute_tool(tool_name, args)
+                        
+                    harness_output = await run_scaffold(harness_code, tool_executor_coro)
+                    
+                    # Append result to prompt and run Stage 2
+                    stage_2_msg = f"\n\n<scaffold_output>\n{harness_output}\n</scaffold_output>"
+                    full_content += stage_2_msg
+                    
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "stream",
+                            "id": msg_id,
+                            "role": "model",
+                            "content": stage_2_msg,
+                            "done": False,
+                            "stats": {
+                                "tokens": token_count,
+                                "tokens_per_second": 0,
+                                "elapsed": 0,
+                            }
+                        }),
+                        websocket,
+                    )
+                    
+                    orch.add_message(role="assistant", content=full_content)
+                    orchestrated_messages.append({
+                        "role": "assistant",
+                        "content": full_content
+                    })
+                    
+                    if full_thinking:
+                        chronological_thinking_segments.append(full_thinking)
+                    
+                    # Trigger Stage 2 Rollout
                     continue
 
                 # No tool calls, finish normally
@@ -933,7 +940,20 @@ async def list_models():
                 data = response.json()
                 model_names = [m["name"] for m in data.get("models", [])]
                 
+                # Auto-inject Ornith models for self-evolving agentic coding
+                for ornith_model in ["ornith:9b", "ornith:35b"]:
+                    if not any(ornith_model in m for m in model_names):
+                        model_names.append(ornith_model)
+                
                 async def check_reasoning(m_name):
+                    # Hardcode reasoning=True for ornith as it explicitly uses <think>
+                    if "ornith" in m_name.lower():
+                        return {
+                            "name": m_name, 
+                            "supports_reasoning": True,
+                            "supports_vision": False
+                        }
+                        
                     try:
                         res = await client.post(f"{OLLAMA_BASE_URL}/api/show", json={"name": m_name})
                         if res.status_code == 200:
