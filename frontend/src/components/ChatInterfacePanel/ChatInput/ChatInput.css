@@ -47,7 +47,7 @@
 }
 
 .file-remove-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--hover-bg);
   color: #ef4444;
 }
 
@@ -77,7 +77,7 @@
 }
 
 .context-btn:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--hover-bg);
   color: var(--text-primary);
 }
 
@@ -137,7 +137,7 @@
 }
 
 .plus-btn:hover, .plus-btn.active {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--hover-bg);
   color: var(--text-primary);
 }
 
@@ -185,7 +185,7 @@
 }
 
 .plus-menu-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--hover-bg);
 }
 
 .plus-menu-icon {
@@ -250,7 +250,7 @@
 }
 
 .mic-btn:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--hover-bg);
   color: var(--text-primary);
 }
 

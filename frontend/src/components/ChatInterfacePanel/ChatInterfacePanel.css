@@ -9,7 +9,7 @@
 /* ── Premium Top Header Bar ── */
 .chat-header-bar {
   height: 56px;
-  background-color: rgba(26, 26, 29, 0.4);
+  background-color: var(--header-bg);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-color);
   display: flex;
@@ -39,9 +39,9 @@
 
 .sidebar-toggle-btn:hover {
   color: var(--text-primary);
-  background-color: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.15);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.05);
+  background-color: var(--hover-bg);
+  border-color: var(--border-color);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.06);
 }
 
 .sidebar-toggle-btn.collapsed {
@@ -67,10 +67,10 @@
   gap: 8px;
   font-size: 0.85rem;
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--subtle-bg);
   padding: 6px 14px;
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
 }
 
 .status-dot {
@@ -113,8 +113,8 @@
 .status-value {
   color: var(--text-primary);
   font-weight: 600;
-  background-color: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background-color: var(--subtle-bg);
+  border: 1px solid var(--border-color);
   padding: 2px 8px;
   border-radius: 6px;
   font-family: var(--font-family);
@@ -274,7 +274,7 @@
   transform: translateY(-50%) translateX(10px);
   opacity: 0;
   visibility: hidden;
-  background-color: rgba(26, 26, 29, 0.95);
+  background-color: var(--tooltip-bg);
   backdrop-filter: blur(12px);
   border: 1px solid var(--border-color);
   padding: 6px 12px;
@@ -326,7 +326,7 @@
   width: 38px;
   height: 38px;
   border-radius: 7px; /* Square with exactly 7px border radius */
-  background-color: rgba(26, 26, 29, 0.85);
+  background-color: var(--overlay-bg);
   backdrop-filter: blur(12px);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);

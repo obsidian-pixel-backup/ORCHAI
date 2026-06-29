@@ -84,16 +84,16 @@
   padding: 12px 14px;
   border-radius: 10px;
   cursor: pointer;
-  background-color: rgba(255, 255, 255, 0.01);
-  border: 1px solid rgba(255, 255, 255, 0.02);
+  background-color: var(--subtle-bg);
+  border: 1px solid var(--border-color);
   color: var(--text-secondary);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
 .chat-item:hover {
-  background-color: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--hover-bg);
+  border-color: var(--border-color);
   color: var(--text-primary);
 }
 
@@ -115,7 +115,7 @@
 
 .chat-rename-input {
   width: 100%;
-  background-color: rgba(0, 0, 0, 0.35);
+  background-color: var(--input-bg);
   border: 1px solid var(--accent-color);
   color: var(--text-primary);
   border-radius: 6px;
@@ -154,7 +154,7 @@
 }
 
 .chat-action-btn:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--hover-bg);
   color: var(--text-primary);
 }
 

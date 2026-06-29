@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useLayoutEffect } from 'react';
 import './App.css';
 import { ChatManagementPanel } from './components/ChatManagementPanel/ChatManagementPanel';
 import { ChatInterfacePanel } from './components/ChatInterfacePanel/ChatInterfacePanel';
@@ -41,6 +41,19 @@ function App() {
   const [maxTokens, setMaxTokens] = useState<number>(-1);
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
   const [isRightCollapsed, setIsRightCollapsed] = useState(false);
+  const [isDarkTheme, setIsDarkTheme] = useState<boolean>(() => {
+    return localStorage.getItem('orchai_theme') !== 'light';
+  });
+
+  useLayoutEffect(() => {
+    document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light');
+  }, [isDarkTheme]);
+
+  useEffect(() => {
+    localStorage.setItem('orchai_theme', isDarkTheme ? 'dark' : 'light');
+  }, [isDarkTheme]);
+
+  const handleToggleTheme = () => setIsDarkTheme(prev => !prev);
 
   // Load chat sessions from localStorage or use default initial chat
   const [chats, setChats] = useState<ChatSession[]>(() => {
@@ -268,6 +281,8 @@ function App() {
           onToggleLeft={() => setIsLeftCollapsed(!isLeftCollapsed)}
           onToggleRight={() => setIsRightCollapsed(!isRightCollapsed)}
           onBranchChat={(messageId) => handleBranchChat(activeChatId, messageId)}
+          isDarkTheme={isDarkTheme}
+          onToggleTheme={handleToggleTheme}
         />
       </div>
       <div className={`right-panel ${isRightCollapsed ? 'collapsed' : ''}`}>
