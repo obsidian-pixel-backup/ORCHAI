@@ -3,8 +3,16 @@ from pydantic import BaseModel
 import json
 import httpx
 import asyncio
+import sys
+import os
 from typing import List, Dict, Any, Optional
 from api.context_engine import ContextOrchestrator, estimate_tokens
+
+# Ensure the backend root (which holds top-level modules like skills, sub_agents,
+# web_research, system_tools) is importable regardless of the working directory.
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
 
 router = APIRouter()
 
@@ -91,6 +99,16 @@ class GenerateTitleRequest(BaseModel):
 
 
 # ── REST API Routes ──
+
+@router.get("/skills")
+async def list_skills():
+    """Return the catalog of selectable functional skills for the frontend."""
+    try:
+        from skills import get_public_skills
+        return {"skills": get_public_skills()}
+    except ImportError:
+        return {"skills": []}
+
 
 @router.get("/world-state")
 async def get_world_state(session_id: str = "default"):
@@ -264,7 +282,17 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
     # 3. Intercept & Orchestrate: Build optimal context prompt
     orchestrated_messages = orch.build_orchestrated_prompt(last_user_query)
-    
+
+    # 3b. Detect activated skills from the latest user message and inject their
+    # specialized methodology into the system prompt for this turn only.
+    try:
+        from skills import detect_active_skills, build_skill_injection
+        active_skill_ids = detect_active_skills(last_user_query)
+        if active_skill_ids and orchestrated_messages and orchestrated_messages[0].get("role") == "system":
+            orchestrated_messages[0]["content"] += build_skill_injection(active_skill_ids)
+    except ImportError:
+        pass
+
     # We will let Ollama automatically calculate the best layer offload (num_gpu).
     # However, Ollama's default context size is 2048, which truncates web-scraped content.
     # Set it to 131072 to prevent output truncation when processing large data and allow full context windows.
