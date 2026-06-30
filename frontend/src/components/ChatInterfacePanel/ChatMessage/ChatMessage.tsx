@@ -13,6 +13,7 @@ interface ChatMessageProps {
     tokens_per_second: number;
     tokens: number;
     elapsed: number;
+    prompt_eval_count?: number;
     model?: string;
   };
   toolApprovalRequest?: { tool: string; command: string; id: string };
@@ -333,7 +334,11 @@ export function ChatMessage({
                     </svg>
                     <span>{stats.tokens_per_second.toFixed(1)} t/s</span>
                     <span className="bullet-separator">•</span>
-                    <span>{stats.tokens} tokens</span>
+                    {stats.prompt_eval_count ? (
+                      <span>{stats.prompt_eval_count} in • {stats.tokens} out</span>
+                    ) : (
+                      <span>{stats.tokens} tokens</span>
+                    )}
                     <span className="bullet-separator">•</span>
                     <span>{stats.elapsed.toFixed(2)}s</span>
                   </span>

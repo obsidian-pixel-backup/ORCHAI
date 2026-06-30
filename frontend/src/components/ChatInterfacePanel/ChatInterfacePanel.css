@@ -218,7 +218,7 @@
 }
 
 .navigator-dash {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--border-color);
   border: none;
   height: 2px;
   border-radius: 1px;
@@ -236,12 +236,12 @@
 }
 
 .navigator-dash.user:hover {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--text-secondary);
   width: 6.5px;
 }
 
 .navigator-dash.model:hover {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--text-secondary);
   width: 8px;
 }
 
@@ -367,7 +367,7 @@
   .scroll-bottom-btn {
     right: 12px;
     bottom: 80px; /* Float above the input box on narrow viewports to avoid overlapping controls */
-    background-color: rgba(26, 26, 29, 0.95);
+    background-color: var(--dropdown-bg);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   }
 }
@@ -441,7 +441,7 @@
 
 .queued-message-cancel:hover {
   color: #ef4444;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--hover-bg);
 }
 
 @keyframes slideInQueued {

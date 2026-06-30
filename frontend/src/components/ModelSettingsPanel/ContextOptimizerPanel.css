@@ -8,8 +8,8 @@
 
 /* ── Unified Slate Glassmorphic Cards ── */
 .optimizer-section {
-  background: rgba(22, 22, 26, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
   border-radius: 14px;
   padding: 16px 14px; /* Reduced horizontal padding */
   backdrop-filter: blur(20px);
@@ -24,7 +24,7 @@
 .optimizer-section:hover {
   border-color: rgba(99, 102, 241, 0.3);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  background: rgba(22, 22, 26, 0.85);
+  background: var(--card-hover-bg);
 }
 
 /* ── Section Title Typography (Flat & Borderless) ── */
@@ -81,7 +81,7 @@
 }
 
 .remaining-slice {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--border-color);
 }
 
 .legend-grid {
@@ -109,7 +109,7 @@
 .active-dot { background-color: #6366f1; }
 .world-dot { background-color: #7f00ff; }
 .recall-dot { background-color: #ff9900; }
-.remaining-dot { background-color: rgba(255, 255, 255, 0.2); }
+.remaining-dot { background-color: var(--text-secondary); }
 
 /* ── Attention Health Badge ── */
 .health-badge {
@@ -266,15 +266,15 @@
   cursor: pointer;
   padding: 14px 16px;
   border-radius: 10px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   width: 100%;
 }
 
 .toggle-control:hover {
-  background: rgba(0, 0, 0, 0.3);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: var(--hover-bg);
+  border-color: var(--accent-color);
   transform: translateY(-1px);
 }
 
@@ -319,7 +319,7 @@
 }
 
 .toggle-switch.off {
-  background-color: rgba(255, 255, 255, 0.12);
+  background-color: var(--border-color);
 }
 
 .toggle-switch::before {
@@ -350,8 +350,8 @@
 }
 
 .edit-btn, .save-btn, .cancel-btn {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--subtle-bg);
+  border: 1px solid var(--border-color);
   color: var(--text-primary);
   font-size: 0.75rem;
   font-weight: 600;
@@ -381,7 +381,7 @@
 }
 
 .cancel-btn:hover {
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: var(--hover-bg);
 }
 
 .edit-actions {
@@ -390,10 +390,10 @@
 }
 
 .world-state-card {
-  background-color: rgba(0, 0, 0, 0.25);
+  background-color: var(--input-bg);
   border-radius: 10px;
   padding: 24px 16px; /* High fidelity spacious padding */
-  border: 1px solid rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
   max-height: 220px;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -416,7 +416,7 @@
 .world-state-content {
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
   font-size: 0.78rem;
-  color: #cbd5e1;
+  color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
   line-height: 1.5;
@@ -437,8 +437,8 @@
 .world-state-editor {
   width: 100%;
   height: 180px;
-  background-color: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background-color: var(--input-bg);
+  border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 14px;
   font-family: 'JetBrains Mono', 'Fira Code', Consolas, monospace;
@@ -452,7 +452,7 @@
 
 .world-state-editor:focus {
   border-color: var(--accent-color);
-  background-color: rgba(0, 0, 0, 0.35);
+  background-color: var(--input-bg);
   box-shadow: 0 0 8px rgba(79, 70, 229, 0.2);
 }
 
@@ -467,8 +467,8 @@
 .search-bar input {
   flex: 1;
   min-width: 0; /* Extremely important: allows flex item to shrink below browser default */
-  background-color: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background-color: var(--input-bg);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 10px 12px;
   font-size: 0.8rem;
@@ -478,19 +478,19 @@
 }
 
 .search-bar input::placeholder {
-  color: #575765;
+  color: var(--text-secondary);
 }
 
 .search-bar input:focus {
   border-color: var(--accent-color);
-  background-color: rgba(0, 0, 0, 0.35);
+  background-color: var(--input-bg);
   box-shadow: 0 0 8px rgba(79, 70, 229, 0.15);
 }
 
 .search-btn {
   flex-shrink: 0; /* Extremely important: prevents search button squishing or wrapping */
-  background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: var(--subtle-bg);
+  border: 1px solid var(--border-color);
   color: var(--text-primary);
   padding: 0 14px;
   font-size: 0.78rem;
@@ -533,14 +533,14 @@
 }
 
 .search-result-item {
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: var(--subtle-bg);
   border-left: 3px solid var(--accent-color);
   border-radius: 0 10px 10px 0;
   padding: 10px 14px;
   font-size: 0.75rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.02);
-  border-right: 1px solid rgba(255, 255, 255, 0.02);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  border-top: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .result-role {

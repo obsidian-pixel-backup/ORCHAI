@@ -14,6 +14,7 @@ export interface Message {
     tokens_per_second: number;
     tokens: number;
     elapsed: number;
+    prompt_eval_count?: number;
     model?: string;
   };
   toolApprovalRequest?: { tool: string; command: string; id: string };
@@ -27,7 +28,7 @@ interface ChatInterfacePanelProps {
   selectedModel: string;
   temperature: number;
   maxTokens: number;
-  onStatsUpdate: (stats: { tokens_per_second: number; tokens: number; elapsed: number }) => void;
+  onStatsUpdate: (stats: { tokens_per_second: number; tokens: number; elapsed: number; prompt_eval_count?: number }) => void;
   isLeftCollapsed: boolean;
   isRightCollapsed: boolean;
   onToggleLeft: () => void;
@@ -242,6 +243,7 @@ export function ChatInterfacePanel({
                 tokens_per_second: data.stats.tokens_per_second ?? 0,
                 tokens: data.stats.tokens ?? 0,
                 elapsed: data.stats.elapsed ?? 0,
+                prompt_eval_count: data.stats.prompt_eval_count,
               });
             }
 

@@ -9,6 +9,7 @@ export interface Stats {
   tokens_per_second: number;
   tokens: number;
   elapsed: number;
+  prompt_eval_count?: number;
 }
 
 export interface ChatSession {
@@ -32,6 +33,7 @@ const INITIAL_CHAT: ChatSession = {
     tokens_per_second: 0,
     tokens: 0,
     elapsed: 0,
+    prompt_eval_count: 0,
   }
 };
 
@@ -196,6 +198,7 @@ function App() {
         tokens_per_second: 0,
         tokens: 0,
         elapsed: 0,
+        prompt_eval_count: 0,
       }
     };
     setChats((prev) => [...prev, newChat]);

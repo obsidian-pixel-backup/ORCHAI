@@ -167,8 +167,8 @@
 }
 
 .custom-model-option.selected {
-  background-color: rgba(99, 102, 241, 0.15);
-  color: #818cf8;
+  background-color: var(--subtle-bg);
+  color: var(--accent-color);
   font-weight: 500;
 }
 
@@ -308,7 +308,7 @@
   align-items: center;
   font-size: 0.85rem;
   padding: 10px 12px;
-  background: rgba(20, 22, 28, 0.4);
+  background: var(--subtle-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   transition: background 0.2s ease, transform 0.2s ease;
@@ -341,7 +341,7 @@
   width: 100%;
   padding: 10px;
   margin-top: 4px;
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--subtle-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
   color: var(--text-secondary);
@@ -352,9 +352,9 @@
 }
 
 .vision-toggle-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover-bg);
   color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: var(--accent-color);
 }
 
 .checkbox-input {
@@ -378,8 +378,8 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(79, 70, 229, 0.03));
-  border: 1px solid rgba(99, 102, 241, 0.15);
+  background: var(--subtle-bg);
+  border: 1px solid var(--border-color);
   border-radius: 12px;
   padding: 14px 16px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
@@ -387,17 +387,17 @@
 }
 
 .thinking-mode-card:hover {
-  border-color: rgba(99, 102, 241, 0.3);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(79, 70, 229, 0.05));
-  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.15);
+  border-color: var(--accent-color);
+  background: var(--hover-bg);
+  box-shadow: 0 4px 20px rgba(0, 151, 167, 0.15);
 }
 
 .thinking-icon-wrapper {
-  color: #818cf8;
+  color: var(--accent-color);
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(99, 102, 241, 0.1);
+  background-color: var(--subtle-bg);
   padding: 8px;
   border-radius: 8px;
 }
@@ -412,13 +412,13 @@
 .thinking-title {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #e2e8f0;
+  color: var(--text-primary);
   letter-spacing: 0.02em;
 }
 
 .thinking-subtitle {
   font-size: 0.72rem;
-  color: #94a3b8;
+  color: var(--text-secondary);
 }
 
 .thinking-pulse-dot {
@@ -438,29 +438,29 @@
 }
 
 .thinking-mode-card.disabled {
-  background: rgba(255, 255, 255, 0.02);
-  border-color: rgba(255, 255, 255, 0.05);
+  background: var(--input-bg);
+  border-color: var(--border-color);
   box-shadow: none;
   cursor: not-allowed;
 }
 
 .thinking-mode-card.disabled:hover {
-  background: rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.08);
+  background: var(--input-bg);
+  border-color: var(--border-color);
   box-shadow: none;
 }
 
 .thinking-icon-wrapper.disabled {
-  background-color: rgba(255, 255, 255, 0.05);
-  color: #64748b;
+  background-color: var(--input-bg);
+  color: var(--text-secondary);
 }
 
 .thinking-title.disabled {
-  color: #94a3b8;
+  color: var(--text-secondary);
 }
 
 .thinking-subtitle.disabled {
-  color: #64748b;
+  color: var(--text-secondary);
 }
 
 .checkbox-container:hover .checkbox-label {
