@@ -129,14 +129,13 @@ function ThinkingBlock({ block }: { block: { content: string, isThinkingActive: 
   );
 }
 
-export function ChatMessage({ 
-  id, role, content, images, documents, thinking: thinkingProp, stats, 
-  toolApprovalRequest, toolExecutions, onEdit, onBranch, onApproveTool 
+export function ChatMessage({
+  id, role, content, images, documents, stats,
+  toolApprovalRequest, onEdit, onBranch, onApproveTool
 }: ChatMessageProps) {
   const isModel = role === 'model';
   const chronologicalBlocks = isModel ? parseChronologicalBlocks(content) : [{ type: 'text' as const, content, isThinkingActive: false }];
-  const isAnyThinkingActive = chronologicalBlocks.some(b => b.isThinkingActive);
-  
+
   const [expandedDocIdx, setExpandedDocIdx] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(content);

@@ -14,12 +14,39 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration }: Chat
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
 
-  const skills = [
-    { id: 'web_search', name: 'Web search', icon: '🌐', description: 'Find real-time news and info' },
-    { id: 'create_image', name: 'Create image', icon: '🎨', description: 'Visualize anything' },
-    { id: 'deep_research', name: 'Deep research', icon: '🔬', description: 'In-depth search and analysis' },
-    { id: 'github', name: 'GitHub', icon: '🐙', description: 'Access repositories and PRs' }
+  interface Skill {
+    id: string;
+    label: string;
+    icon: string;
+    description: string;
+  }
+
+  // Functional skills are fetched from the backend registry (backend/skills.py).
+  // Fallback to a static list if the backend is unreachable.
+  const FALLBACK_SKILLS: Skill[] = [
+    { id: 'code_review', label: 'Code review', icon: '🔍', description: 'Rigorous bug & quality audit' },
+    { id: 'security_audit', label: 'Security audit', icon: '🛡️', description: 'Threat & vulnerability scan' },
+    { id: 'deep_research', label: 'Deep research', icon: '🔬', description: 'Multi-source cited research' },
+    { id: 'doc_writer', label: 'Documentation', icon: '📝', description: 'Generate docs from code' },
   ];
+  const [skills, setSkills] = useState<Skill[]>(FALLBACK_SKILLS);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('http://127.0.0.1:8000/api/chat/skills')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.skills?.length) {
+          setSkills(data.skills);
+        }
+      })
+      .catch(() => {
+        /* keep fallback skills */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handlePlusClick = () => {
     setShowPlusMenu(!showPlusMenu);
@@ -371,10 +398,10 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration }: Chat
               </div>
               <div className="plus-menu-divider"></div>
               {skills.map(skill => (
-                <div key={skill.id} className="plus-menu-item" onClick={() => handleSkillSelect(skill.name)}>
+                <div key={skill.id} className="plus-menu-item" onClick={() => handleSkillSelect(skill.label)}>
                   <span className="plus-menu-icon">{skill.icon}</span>
                   <div className="plus-menu-text">
-                    <span className="plus-menu-title">{skill.name}</span>
+                    <span className="plus-menu-title">{skill.label}</span>
                     {skill.description && <span className="plus-menu-desc">{skill.description}</span>}
                   </div>
                 </div>

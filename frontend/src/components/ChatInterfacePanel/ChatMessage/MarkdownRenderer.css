@@ -43,9 +43,9 @@
 
 /* Inline code span */
 .inline-code {
-  background-color: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #ff79c6; /* vibrant neon pink/purple for high visibility */
+  background-color: var(--inline-code-bg);
+  border: 1px solid var(--inline-code-border);
+  color: var(--inline-code-color);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Monaco, Consolas, monospace;
@@ -70,7 +70,7 @@
 /* Blockquote */
 .markdown-container blockquote {
   border-left: 4px solid var(--accent-color);
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: var(--subtle-bg);
   margin: 12px 0;
   padding: 10px 18px;
   border-radius: 0 8px 8px 0;
@@ -137,7 +137,7 @@
   border-radius: 8px;
   border: 1px solid var(--border-color);
   margin: 16px 0;
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: var(--tool-card-bg);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
@@ -167,7 +167,7 @@
 }
 
 .markdown-table tr:nth-child(even) {
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: var(--subtle-bg);
 }
 
 /* Code Blocks */
@@ -176,14 +176,14 @@
   border-radius: 8px;
   overflow: hidden;
   margin: 16px 0;
-  background-color: #0b0f19; /* premium IDE deep dark background */
+  background-color: var(--code-bg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
 }
 
 .code-block-header {
-  background-color: #121824;
+  background-color: var(--code-header-bg);
   padding: 8px 16px;
   display: flex;
   justify-content: space-between;
@@ -217,7 +217,7 @@
 }
 
 .code-block-copy-btn:hover {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: var(--hover-bg);
   color: var(--text-primary);
 }
 
@@ -244,7 +244,7 @@
   font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 0.85rem;
   line-height: 1.5;
-  color: #e2e8f0;
+  color: var(--code-text);
   white-space: pre;
 }
 
@@ -264,9 +264,9 @@
 
 /* Tool Execution Card */
 .tool-execution-card {
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--tool-card-border);
   border-radius: 8px;
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: var(--tool-card-bg);
   margin: 12px 0;
   overflow: hidden;
   transition: all 0.2s ease;
@@ -284,12 +284,12 @@
   align-items: center;
   padding: 10px 14px;
   cursor: pointer;
-  background-color: rgba(255, 255, 255, 0.03);
+  background-color: var(--tool-header-bg);
   user-select: none;
 }
 
 .tool-execution-header:hover {
-  background-color: rgba(255, 255, 255, 0.06);
+  background-color: var(--hover-bg);
 }
 
 .tool-execution-title {
@@ -317,8 +317,8 @@
 
 .tool-execution-body {
   padding: 14px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  background-color: rgba(0, 0, 0, 0.3);
+  border-top: 1px solid var(--tool-card-border);
+  background-color: var(--tool-body-bg);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -341,12 +341,12 @@
 .tool-code-block {
   margin: 0;
   padding: 10px 12px;
-  background-color: #0b0f19;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background-color: var(--code-bg);
+  border: 1px solid var(--tool-card-border);
   border-radius: 6px;
   font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 0.8rem;
-  color: #e2e8f0;
+  color: var(--code-text);
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
