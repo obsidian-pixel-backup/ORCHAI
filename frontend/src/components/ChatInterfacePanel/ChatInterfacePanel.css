@@ -6,12 +6,22 @@
   overflow: hidden;
 }
 
-/* ── Premium Top Header Bar ── */
+/* ── Chat History Wrapper ── */
+.chat-history-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-color);
+  border-top-left-radius: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+/* ── Chat Header (matches left panel bg, square corners) ── */
 .chat-header-bar {
   height: 56px;
-  background-color: var(--header-bg);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border-color);
+  background-color: transparent;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -21,42 +31,55 @@
   z-index: 10;
 }
 
-.sidebar-toggle-btn {
+.nav-collapse-btn {
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: none;
   color: var(--text-secondary);
   width: 36px;
   height: 36px;
-  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  outline: none;
-  position: relative;
+  border-radius: 0;
+  transition: all 0.15s ease;
 }
 
-.sidebar-toggle-btn:hover {
-  color: var(--text-primary);
+.nav-collapse-btn:hover {
   background-color: var(--hover-bg);
-  border-color: var(--border-color);
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.06);
+  color: var(--text-primary);
 }
 
-.sidebar-toggle-btn.collapsed {
-  color: var(--accent-color);
-  border-color: rgba(79, 70, 229, 0.3);
-  background-color: rgba(79, 70, 229, 0.06);
-  box-shadow: 0 0 12px rgba(79, 70, 229, 0.12);
+.icon-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 0;
+  transition: all 0.15s ease;
 }
 
-.sidebar-toggle-btn svg {
-  transition: transform 0.2s ease;
+.icon-btn:hover {
+  background-color: var(--hover-bg);
+  color: var(--text-primary);
 }
 
-.sidebar-toggle-btn:hover svg {
-  transform: scale(1.05);
+/* ── Premium Top Header Bar ── */
+.chat-header-bar {
+  height: 56px;
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  flex-shrink: 0;
+  user-select: none;
+  z-index: 10;
 }
 
 /* Model Status & Indicator */
@@ -69,7 +92,7 @@
   color: var(--text-secondary);
   background: var(--subtle-bg);
   padding: 6px 14px;
-  border-radius: 20px;
+  border-radius: 7px;
   border: 1px solid var(--border-color);
 }
 
@@ -125,7 +148,7 @@
 .chat-history {
   flex: 1;
   overflow-y: auto;
-  padding: 30px 40px;
+  padding: 40px 40px 30px 40px;
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -137,15 +160,35 @@
   display: none; /* Hide scrollbar for WebKit browsers */
 }
 
+/* ── Compact Mode Overrides ── */
+[data-compact="true"] .chat-history {
+  padding: 24px 24px 16px 24px;
+  gap: 16px;
+}
+
 .chat-input-wrapper {
   padding: 20px 40px 40px 40px;
-  background: linear-gradient(to top, var(--bg-color) 80%, transparent);
+  background: var(--bg-color);
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+[data-compact="true"] .chat-input-wrapper {
+  padding: 16px 24px 24px 24px;
 }
 
 .typing-indicator {
   display: flex;
   gap: 4px;
   padding: 12px 0;
+  width: calc(100% - 116px);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+@media (max-width: 960px) {
+  .typing-indicator {
+    width: 100%;
+  }
 }
 
 .typing-indicator span {
@@ -315,7 +358,7 @@
   position: relative;
   max-width: 800px;
   margin: 0 auto;
-  width: 100%;
+  width: calc(100% - 116px); /* Make room for the scroll-bottom button */
 }
 
 /* ── Smart Floating Scroll-to-Bottom Button next to User Input ── */
@@ -336,7 +379,7 @@
   cursor: pointer;
   z-index: 20;
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
   animation: slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
@@ -344,7 +387,7 @@
   background-color: var(--accent-color);
   color: white;
   border-color: var(--accent-color);
-  box-shadow: 0 4px 20px rgba(79, 70, 229, 0.55);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
   transform: translateY(-2px);
 }
 
@@ -364,6 +407,9 @@
 }
 
 @media (max-width: 960px) {
+  .chat-input-inner {
+    width: 100%;
+  }
   .scroll-bottom-btn {
     right: 12px;
     bottom: 80px; /* Float above the input box on narrow viewports to avoid overlapping controls */

@@ -5,9 +5,10 @@ interface ChatInputProps {
   onSendMessage: (content: string, images: string[], documents: { name: string; content: string }[]) => void;
   isStreaming?: boolean;
   onStopGeneration?: () => void;
+  sendOnEnter?: boolean;
 }
 
-export function ChatInput({ onSendMessage, isStreaming, onStopGeneration }: ChatInputProps) {
+export function ChatInput({ onSendMessage, isStreaming, onStopGeneration, sendOnEnter }: ChatInputProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [inputValue, setInputValue] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
@@ -331,10 +332,20 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration }: Chat
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      if (!isListening && !isTranscribing) {
-        handleSend();
+    const enterToSend = sendOnEnter !== false; // defaults to true if undefined
+    
+    if (e.key === 'Enter') {
+      if (enterToSend && !e.shiftKey) {
+        e.preventDefault();
+        if (!isListening && !isTranscribing) {
+          handleSend();
+        }
+      } else if (!enterToSend && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+        // If sendOnEnter is false, we use Enter for newlines, and Shift+Enter or Ctrl+Enter for sending.
+        e.preventDefault();
+        if (!isListening && !isTranscribing) {
+          handleSend();
+        }
       }
     }
   };

@@ -1,0 +1,94 @@
+/* Content Drawer — collapsible panel between activity bar and chat */
+
+.content-drawer {
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  height: 100vh;
+  background: var(--panel-bg);
+  overflow: hidden;
+  flex-shrink: 0;
+  position: relative;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.25s ease,
+              transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.content-drawer.resizing {
+  transition: opacity 0.25s ease, transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.content-drawer.open {
+  width: 240px;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.content-drawer:not(.open) {
+  width: 0 !important;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-right: none;
+  transform: translateX(-100%);
+}
+
+/* Header — same height as chat header (56px) for visual hierarchy */
+.drawer-header {
+  height: 56px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.drawer-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary, #f8fafc);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+.drawer-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #94a3b8);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.drawer-close-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary, #f8fafc);
+}
+
+/* Content area */
+.drawer-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Resize Handle */
+.drawer-resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 10;
+  transition: background-color 0.2s ease;
+}
+
+.drawer-resizer:hover,
+.content-drawer.resizing .drawer-resizer {
+  background-color: var(--accent-color);
+}

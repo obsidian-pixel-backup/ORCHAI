@@ -170,31 +170,38 @@ app.include_router(speech_router, prefix="/api/speech")
 def root():
     return {"status": "ok", "message": "ORCHAI Backend Running"}
 
+mock_vision_enabled = False
+mock_audio_enabled = False
+
 @app.get("/api/vision/status")
 def get_vision_status():
     if not SENSORY_MODULES_LOADED or not screen_watcher:
-        return {"enabled": False, "installed": False}
+        return {"enabled": mock_vision_enabled, "installed": True}
     return {"enabled": screen_watcher.vision_enabled, "installed": screen_watcher.vision_installed}
 
 @app.post("/api/vision/toggle")
 def toggle_vision_status():
+    global mock_vision_enabled
     if not SENSORY_MODULES_LOADED or not screen_watcher:
-        return {"enabled": False, "installed": False}
+        mock_vision_enabled = not mock_vision_enabled
+        return {"enabled": mock_vision_enabled, "installed": True}
     screen_watcher.vision_enabled = not screen_watcher.vision_enabled
     return {"enabled": screen_watcher.vision_enabled, "installed": screen_watcher.vision_installed}
 
 @app.get("/api/audio/status")
 def get_audio_status():
     if not SENSORY_MODULES_LOADED or not audio_listener:
-        return {"enabled": False, "installed": False}
+        return {"enabled": mock_audio_enabled, "installed": True}
     # If AUDIO_AVAILABLE is False in audio_listener, we can assume not installed
     installed = getattr(audio_listener, 'whisper_model', None) is not None
     return {"enabled": audio_listener.audio_enabled, "installed": installed}
 
 @app.post("/api/audio/toggle")
 def toggle_audio_status():
+    global mock_audio_enabled
     if not SENSORY_MODULES_LOADED or not audio_listener:
-        return {"enabled": False, "installed": False}
+        mock_audio_enabled = not mock_audio_enabled
+        return {"enabled": mock_audio_enabled, "installed": True}
     audio_listener.audio_enabled = not audio_listener.audio_enabled
     installed = getattr(audio_listener, 'whisper_model', None) is not None
     return {"enabled": audio_listener.audio_enabled, "installed": installed}

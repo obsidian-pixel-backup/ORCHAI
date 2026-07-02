@@ -71,9 +71,6 @@ export function ChatManagementPanel({
 
   return (
     <div className="chat-management-container">
-      <div className="panel-header">
-        <h2>Chats</h2>
-      </div>
       <div className="chat-list">
         <button className="new-chat-btn" onClick={onNewChat}>
           + New Chat

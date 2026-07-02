@@ -1,9 +1,10 @@
-/* ContextOptimizerPanel.css - Unified Ultra-Premium Styling */
+/* MemoryHubPanel.css - Unified Ultra-Premium Styling */
 
 .optimizer-panel-container {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  padding: 0 10px 20px 10px;
 }
 
 /* ── Unified Slate Glassmorphic Cards ── */
@@ -13,7 +14,7 @@
   border-radius: 14px;
   padding: 16px 14px; /* Reduced horizontal padding */
   backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
@@ -23,7 +24,7 @@
 
 .optimizer-section:hover {
   border-color: rgba(99, 102, 241, 0.3);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2);
   background: var(--card-hover-bg);
 }
 
@@ -46,6 +47,8 @@
   justify-content: space-between;
   align-items: center;
   width: 100%;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .section-header-row h3 {
@@ -396,21 +399,10 @@
   border: 1px solid var(--border-color);
   max-height: 220px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-color) transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100px;
-}
-
-.world-state-card::-webkit-scrollbar {
-  width: 4px;
-}
-
-.world-state-card::-webkit-scrollbar-thumb {
-  background-color: var(--border-color);
-  border-radius: 4px;
 }
 
 .world-state-content {
@@ -518,18 +510,7 @@
   gap: 10px;
   max-height: 180px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-color) transparent;
   width: 100%;
-}
-
-.search-results-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.search-results-list::-webkit-scrollbar-thumb {
-  background-color: var(--border-color);
-  border-radius: 4px;
 }
 
 .search-result-item {

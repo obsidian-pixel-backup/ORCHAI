@@ -27,15 +27,18 @@ interface ChatInterfacePanelProps {
   setMessages: (newMessagesOrFn: Message[] | ((prev: Message[]) => Message[])) => void;
   selectedModel: string;
   temperature: number;
+  repeatPenalty: number;
+  topP: number;
+  minP: number;
   maxTokens: number;
   onStatsUpdate: (stats: { tokens_per_second: number; tokens: number; elapsed: number; prompt_eval_count?: number }) => void;
-  isLeftCollapsed: boolean;
-  isRightCollapsed: boolean;
-  onToggleLeft: () => void;
-  onToggleRight: () => void;
+  isNavCollapsed: boolean;
   onBranchChat?: (messageId: string) => void;
   isDarkTheme: boolean;
   onToggleTheme: () => void;
+  sendOnEnter?: boolean;
+  models?: {name: string, supports_reasoning: boolean, supports_vision?: boolean}[];
+  onModelChange?: (model: string) => void;
 }
 
 export function ChatInterfacePanel({
@@ -44,24 +47,39 @@ export function ChatInterfacePanel({
   setMessages,
   selectedModel,
   temperature,
+  repeatPenalty,
+  topP,
+  minP,
   maxTokens,
   onStatsUpdate,
-  isLeftCollapsed,
-  isRightCollapsed,
-  onToggleLeft,
-  onToggleRight,
+  isNavCollapsed: _,
   onBranchChat,
   isDarkTheme,
   onToggleTheme,
+  sendOnEnter,
+  models = [],
+  onModelChange,
 }: ChatInterfacePanelProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [activeResponseId, setActiveResponseId] = useState<string | null>(null);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
   const historyContainerRef = useRef<HTMLDivElement | null>(null);
   const streamingMessageIdRef = useRef<string | null>(null);
+  const modelDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setIsModelDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const [queuedMessages, setQueuedMessages] = useState<Message[]>([]);
   const queuedMessagesRef = useRef(queuedMessages);
@@ -69,6 +87,9 @@ export function ChatInterfacePanel({
   const messagesRef = useRef(messages);
   const selectedModelRef = useRef(selectedModel);
   const temperatureRef = useRef(temperature);
+  const repeatPenaltyRef = useRef(repeatPenalty);
+  const topPRef = useRef(topP);
+  const minPRef = useRef(minP);
   const maxTokensRef = useRef(maxTokens);
 
   useEffect(() => { queuedMessagesRef.current = queuedMessages; }, [queuedMessages]);
@@ -76,6 +97,9 @@ export function ChatInterfacePanel({
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
   useEffect(() => { temperatureRef.current = temperature; }, [temperature]);
+  useEffect(() => { repeatPenaltyRef.current = repeatPenalty; }, [repeatPenalty]);
+  useEffect(() => { topPRef.current = topP; }, [topP]);
+  useEffect(() => { minPRef.current = minP; }, [minP]);
   useEffect(() => { maxTokensRef.current = maxTokens; }, [maxTokens]);
   
   // Track if user was near the bottom before token updates
@@ -247,6 +271,15 @@ export function ChatInterfacePanel({
               });
             }
 
+            if (localStorage.getItem('orchai_notifications') === 'true' && document.hidden) {
+              if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification('OrchAI', {
+                  body: 'New response received from model.',
+                  icon: '/favicon.ico'
+                });
+              }
+            }
+
             // Check for queued messages
             setTimeout(() => {
               const qMsgs = queuedMessagesRef.current;
@@ -282,6 +315,9 @@ export function ChatInterfacePanel({
                       messages: conversationHistory,
                       options: {
                         temperature: temperatureRef.current,
+                        repeat_penalty: repeatPenaltyRef.current,
+                        top_p: topPRef.current,
+                        min_p: minPRef.current,
                         num_predict: maxTokensRef.current,
                       },
                     })
@@ -427,6 +463,9 @@ export function ChatInterfacePanel({
           messages: conversationHistory,
           options: {
             temperature: temperatureRef.current,
+            repeat_penalty: repeatPenaltyRef.current,
+            top_p: topPRef.current,
+            min_p: minPRef.current,
             num_predict: maxTokensRef.current,
           },
         })
@@ -488,6 +527,9 @@ export function ChatInterfacePanel({
           messages: conversationHistory,
           options: {
             temperature: temperatureRef.current,
+            repeat_penalty: repeatPenaltyRef.current,
+            top_p: topPRef.current,
+            min_p: minPRef.current,
             num_predict: maxTokensRef.current,
           },
         })
@@ -542,32 +584,38 @@ export function ChatInterfacePanel({
     <div className="chat-interface-container">
       {/* ── Premium Top Header Bar ── */}
       <div className="chat-header-bar">
-        <button 
-          className={`sidebar-toggle-btn ${isLeftCollapsed ? 'collapsed' : ''}`}
-          onClick={onToggleLeft}
-          title={isLeftCollapsed ? "Show Chat List" : "Hide Chat List"}
-          aria-label={isLeftCollapsed ? "Show Chat List" : "Hide Chat List"}
-        >
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-            <line x1="9" y1="3" x2="9" y2="21"></line>
-            {isLeftCollapsed ? (
-              <polyline points="12 16 16 12 12 8" strokeWidth="2"></polyline>
-            ) : (
-              <polyline points="13 8 9 12 13 16" strokeWidth="2"></polyline>
-            )}
-          </svg>
-        </button>
-
-        <div className="model-status-indicator">
+        <div className="model-status-indicator" style={{ position: 'relative', cursor: 'pointer', userSelect: 'none' }} ref={modelDropdownRef} onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}>
           <span className="status-dot green"></span>
           <span className="status-label">Active Model:</span>
-          <span className="status-value">{selectedModel}</span>
+          <span className="status-value" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            {selectedModel}
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s', transform: isModelDropdownOpen ? 'rotate(-180deg)' : 'none' }}>
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </span>
+          
+          {isModelDropdownOpen && models.length > 0 && (
+            <div className="custom-model-dropdown" style={{ top: '100%', left: 0, marginTop: '8px', minWidth: '220px', zIndex: 100 }}>
+              {models.map((m) => (
+                <div 
+                  key={m.name} 
+                  className={`custom-model-option ${m.name === selectedModel ? 'selected' : ''}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onModelChange) onModelChange(m.name);
+                    setIsModelDropdownOpen(false);
+                  }}
+                >
+                  {m.name}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
-            className="sidebar-toggle-btn"
+            className="icon-btn"
             onClick={onToggleTheme}
             title={isDarkTheme ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             aria-label={isDarkTheme ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
@@ -590,119 +638,106 @@ export function ChatInterfacePanel({
               </svg>
             )}
           </button>
-
-          <button
-            className={`sidebar-toggle-btn ${isRightCollapsed ? 'collapsed' : ''}`}
-            onClick={onToggleRight}
-            title={isRightCollapsed ? "Show Configuration" : "Hide Configuration"}
-            aria-label={isRightCollapsed ? "Show Configuration" : "Hide Configuration"}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="15" y1="3" x2="15" y2="21"></line>
-              {isRightCollapsed ? (
-                <polyline points="12 8 8 12 12 16" strokeWidth="2"></polyline>
-              ) : (
-                <polyline points="11 16 15 12 11 8" strokeWidth="2"></polyline>
-              )}
-            </svg>
-          </button>
         </div>
       </div>
 
-      <div 
-        className="chat-history"
-        ref={historyContainerRef}
-        onScroll={handleScroll}
-      >
-        {messages.map((msg) => (
-          <ChatMessage 
-            key={msg.id} 
-            id={msg.id} 
-            role={msg.role} 
-            content={msg.content} 
-            images={msg.images}
-            documents={msg.documents}
-            thinking={msg.thinking}
-            stats={msg.stats}
-            toolApprovalRequest={msg.toolApprovalRequest}
-            toolExecutions={msg.toolExecutions}
-            onEdit={handleEditMessage}
-            onBranch={onBranchChat}
-            onApproveTool={handleApproveTool}
-          />
-        ))}
-        {isStreaming && !streamingMessageIdRef.current && (
-          <div className="typing-indicator">
-            <span></span>
-            <span></span>
-            <span></span>
+      {/* ── Chat History Area (with rounded top-left corner) ── */}
+      <div className="chat-history-wrapper">
+        <div
+          className="chat-history"
+          ref={historyContainerRef}
+          onScroll={handleScroll}
+        >
+          {messages.map((msg) => (
+            <ChatMessage
+              key={msg.id}
+              id={msg.id}
+              role={msg.role}
+              content={msg.content}
+              images={msg.images}
+              documents={msg.documents}
+              thinking={msg.thinking}
+              stats={msg.stats}
+              toolApprovalRequest={msg.toolApprovalRequest}
+              toolExecutions={msg.toolExecutions}
+              onEdit={handleEditMessage}
+              onBranch={onBranchChat}
+              onApproveTool={handleApproveTool}
+            />
+          ))}
+          {isStreaming && !streamingMessageIdRef.current && (
+            <div className="typing-indicator">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          )}
+          <div ref={chatEndRef} />
+        </div>
+
+        {/* ── Response Navigator Sidebar (Slide Outline Dashboard) ── */}
+        {messages.length > 0 && (
+          <div className="response-navigator">
+            <button
+              className="navigator-chevron"
+              onClick={() => navigateToRelative(-1)}
+              disabled={activeIndex <= 0}
+              title="Previous message"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="18 15 12 9 6 15"></polyline>
+              </svg>
+            </button>
+
+            {navigatorMessages.map((msg) => {
+              const isActive = msg.id === activeResponseId || (activeResponseId === null && msg.id === messages[messages.length - 1]?.id);
+
+              let cleanContent = msg.content;
+              if (msg.role === 'model') {
+                const thinkEndTag = '</think>';
+                const endIdx = msg.content.indexOf(thinkEndTag);
+                if (endIdx !== -1) {
+                  cleanContent = msg.content.slice(endIdx + thinkEndTag.length);
+                } else if (msg.content.includes('<think>')) {
+                  cleanContent = 'Thinking...';
+                }
+              }
+
+              const words = cleanContent.trim().split(/\s+/).filter(Boolean);
+              const previewText = words.length <= 6
+                ? words.join(' ')
+                : words.slice(0, 6).join(' ') + '...';
+
+              return (
+                <div key={msg.id} className="navigator-item-wrapper">
+                  <button
+                    className={`navigator-dash ${msg.role} ${isActive ? 'active' : ''}`}
+                    onClick={() => scrollToResponse(msg.id)}
+                    aria-label={`Jump to ${msg.role === 'user' ? 'Message' : 'Response'}`}
+                  />
+                  <div className="navigator-tooltip">
+                    <span className="tooltip-role">{msg.role === 'user' ? 'You' : 'OrchAI'}</span>
+                    <span className="tooltip-text">{previewText}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            <button
+              className="navigator-chevron"
+              onClick={() => navigateToRelative(1)}
+              disabled={activeIndex >= messages.length - 1}
+              title="Next message"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
           </div>
         )}
-        <div ref={chatEndRef} />
       </div>
 
-      {/* ── Response Navigator Sidebar (Slide Outline Dashboard) ── */}
-      {messages.length > 0 && (
-        <div className="response-navigator">
-          <button 
-            className="navigator-chevron" 
-            onClick={() => navigateToRelative(-1)}
-            disabled={activeIndex <= 0}
-            title="Previous message"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="18 15 12 9 6 15"></polyline>
-            </svg>
-          </button>
-
-          {navigatorMessages.map((msg) => {
-            const isActive = msg.id === activeResponseId || (activeResponseId === null && msg.id === messages[messages.length - 1]?.id);
-            
-            let cleanContent = msg.content;
-            if (msg.role === 'model') {
-              const thinkEndTag = '</think>';
-              const endIdx = msg.content.indexOf(thinkEndTag);
-              if (endIdx !== -1) {
-                cleanContent = msg.content.slice(endIdx + thinkEndTag.length);
-              } else if (msg.content.includes('<think>')) {
-                cleanContent = 'Thinking...';
-              }
-            }
-            
-            const words = cleanContent.trim().split(/\s+/).filter(Boolean);
-            const previewText = words.length <= 6 
-              ? words.join(' ') 
-              : words.slice(0, 6).join(' ') + '...';
-
-            return (
-              <div key={msg.id} className="navigator-item-wrapper">
-                <button
-                  className={`navigator-dash ${msg.role} ${isActive ? 'active' : ''}`}
-                  onClick={() => scrollToResponse(msg.id)}
-                  aria-label={`Jump to ${msg.role === 'user' ? 'Message' : 'Response'}`}
-                />
-                <div className="navigator-tooltip">
-                  <span className="tooltip-role">{msg.role === 'user' ? 'You' : 'OrchAI'}</span>
-                  <span className="tooltip-text">{previewText}</span>
-                </div>
-              </div>
-            );
-          })}
-
-          <button 
-            className="navigator-chevron" 
-            onClick={() => navigateToRelative(1)}
-            disabled={activeIndex >= messages.length - 1}
-            title="Next message"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 12 15 18 9"></polyline>
-            </svg>
-          </button>
-        </div>
-      )}
-
+      {/* ── Input Area ── */}
       <div className="chat-input-wrapper">
         <div className="chat-input-inner">
           {queuedMessages.length > 0 && (
@@ -728,6 +763,7 @@ export function ChatInterfacePanel({
             onSendMessage={handleSendMessage} 
             isStreaming={isStreaming} 
             onStopGeneration={handleStopGeneration} 
+            sendOnEnter={sendOnEnter}
           />
           {/* ── Smart Floating Scroll-to-Bottom Button next to User Input ── */}
           {showScrollButton && (

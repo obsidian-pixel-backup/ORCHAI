@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import './ContextOptimizerPanel.css';
+import './MemoryHubPanel.css';
 
 interface ContextStats {
   active_tokens: number;
@@ -12,7 +12,7 @@ interface ContextStats {
   is_consolidating: boolean;
 }
 
-interface ContextOptimizerPanelProps {
+interface MemoryHubPanelProps {
   stats: {
     tokens_per_second: number;
     tokens: number;
@@ -23,7 +23,7 @@ interface ContextOptimizerPanelProps {
   onConfigChange?: () => void;
 }
 
-export function ContextOptimizerPanel({ stats, wsState, chatId }: ContextOptimizerPanelProps) {
+export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) {
   // Config state
   const [activeLimit, setActiveLimit] = useState<number>(2000);
   const [dynamicConsolidation, setDynamicConsolidation] = useState<boolean>(true);
@@ -77,7 +77,7 @@ export function ContextOptimizerPanel({ stats, wsState, chatId }: ContextOptimiz
   // Sync state whenever active chat, websocket state or incoming message stats change
   useEffect(() => {
     fetchWorldState(1);
-  }, [chatId, wsState, stats.tokens]);
+  }, [chatId, wsState, stats?.tokens]);
 
   // Update backend config when states change
   const saveConfig = async (limit: number, consol: boolean, recall: boolean) => {

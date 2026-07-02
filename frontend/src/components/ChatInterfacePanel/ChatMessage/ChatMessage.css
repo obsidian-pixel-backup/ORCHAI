@@ -1,6 +1,14 @@
 .message-row {
   display: flex;
-  width: 100%;
+  width: calc(100% - 116px);
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+@media (max-width: 960px) {
+  .message-row {
+    width: 100%;
+  }
 }
 
 .user-row {
@@ -12,7 +20,9 @@
 }
 
 .message-content {
-  max-width: 85%;
+  max-width: 100%;
+  min-width: 0;
+  word-break: break-word;
   line-height: 1.6;
   font-size: 14px; /* Adjust to 14px */
   display: flex;
@@ -502,7 +512,7 @@
   background-color: var(--panel-bg, #ffffff);
   border-radius: 24px;
   padding: 40px 32px 32px 32px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
   display: flex;
   flex-direction: column;
   animation: popInModal 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -648,28 +658,6 @@
   padding-right: 8px;
 }
 
-/* Sleek Scrollbar Styling */
-.scrollable::-webkit-scrollbar,
-.scrollable-grid::-webkit-scrollbar {
-  width: 5px;
-}
-
-.scrollable::-webkit-scrollbar-track,
-.scrollable-grid::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.scrollable::-webkit-scrollbar-thumb,
-.scrollable-grid::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 10px;
-}
-
-.scrollable::-webkit-scrollbar-thumb:hover,
-.scrollable-grid::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
-}
-
 .share-app-btn {
   display: flex;
   flex-direction: row;
@@ -807,3 +795,35 @@
   background-color: #dc2626;
 }
 
+/* ── Compact Mode Overrides ── */
+[data-compact="true"] .user-bubble {
+  padding: 8px 14px;
+}
+
+[data-compact="true"] .message-content {
+  font-size: 13px;
+  gap: 8px;
+}
+
+[data-compact="true"] .model-text {
+  padding: 4px 0;
+}
+
+[data-compact="true"] .thinking-block {
+  margin: 4px 0 8px 0;
+  gap: 4px;
+}
+
+[data-compact="true"] .stats-footer {
+  margin-top: 8px;
+  padding-top: 8px;
+  gap: 6px;
+}
+
+[data-compact="true"] .stats-details-grid {
+  gap: 8px;
+}
+
+[data-compact="true"] .stats-detail-card {
+  padding: 8px 10px;
+}

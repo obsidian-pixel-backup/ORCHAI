@@ -4,14 +4,13 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background-color: var(--panel-bg);
-  border-left: 1px solid var(--border-color);
+  background-color: transparent;
+  border-left: none;
 }
 
 .panel-header {
   height: 56px;
   padding: 0 20px;
-  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
 }
@@ -25,45 +24,40 @@
 }
 
 .settings-content {
-  padding: 16px 12px;
+  padding: 4px;
   overflow-y: auto;
   overflow-x: hidden; /* Avoid horizontal scrollbar at all costs */
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-color) transparent;
-}
-
-.settings-content::-webkit-scrollbar {
-  width: 4px;
-}
-
-.settings-content::-webkit-scrollbar-thumb {
-  background-color: var(--border-color);
-  border-radius: 4px;
+  gap: 24px;
 }
 
 /* ── Unified Slate Glassmorphic Cards ── */
 .settings-section {
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 14px;
-  padding: 16px 14px; /* Reduced horizontal padding */
-  backdrop-filter: blur(20px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.24);
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 0;
+  padding: 0 0 24px 0;
+  backdrop-filter: none;
+  box-shadow: none;
+  transition: none;
   display: flex;
   flex-direction: column;
   gap: 16px;
   box-sizing: border-box;
 }
 
+.settings-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
 .settings-section:hover {
-  border-color: rgba(99, 102, 241, 0.3);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-  background: var(--card-hover-bg);
+  border-color: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+  background: transparent;
 }
 
 /* ── Section Title Typography (Flat & Borderless) ── */
@@ -125,7 +119,7 @@
   background-color: var(--dropdown-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   overflow-y: auto;
   z-index: 100;
   display: flex;
@@ -138,19 +132,6 @@
 @keyframes dropdownFadeIn {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
-}
-
-.custom-model-dropdown::-webkit-scrollbar {
-  width: 6px;
-}
-
-.custom-model-dropdown::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.15);
-  border-radius: 4px;
-}
-
-.custom-model-dropdown::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.25);
 }
 
 .custom-model-option {
@@ -379,17 +360,17 @@
   align-items: center;
   gap: 14px;
   background: var(--subtle-bg);
-  border: 1px solid var(--border-color);
+  border: 1px solid rgba(255, 255, 255, 0.05);
   border-radius: 12px;
   padding: 14px 16px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: none;
   transition: all 0.3s ease;
 }
 
 .thinking-mode-card:hover {
-  border-color: var(--accent-color);
+  border-color: rgba(255, 255, 255, 0.1);
   background: var(--hover-bg);
-  box-shadow: 0 4px 20px rgba(0, 151, 167, 0.15);
+  box-shadow: none;
 }
 
 .thinking-icon-wrapper {

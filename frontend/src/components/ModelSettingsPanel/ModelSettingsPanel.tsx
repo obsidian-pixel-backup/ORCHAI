@@ -1,12 +1,17 @@
 import { useEffect, useState, useRef } from 'react';
 import './ModelSettingsPanel.css';
-import { ContextOptimizerPanel } from './ContextOptimizerPanel';
 
 interface ModelSettingsPanelProps {
   selectedModel: string;
   onModelChange: (model: string) => void;
   temperature: number;
   onTemperatureChange: (temp: number) => void;
+  repeatPenalty: number;
+  onRepeatPenaltyChange: (val: number) => void;
+  topP: number;
+  onTopPChange: (val: number) => void;
+  minP: number;
+  onMinPChange: (val: number) => void;
   maxTokens: number;
   onMaxTokensChange: (tokens: number) => void;
   stats: {
@@ -15,6 +20,8 @@ interface ModelSettingsPanelProps {
     elapsed: number;
   };
   chatId: string;
+  models: {name: string, supports_reasoning: boolean, supports_vision?: boolean}[];
+  loadingModels: boolean;
 }
 
 export function ModelSettingsPanel({
@@ -22,13 +29,19 @@ export function ModelSettingsPanel({
   onModelChange,
   temperature,
   onTemperatureChange,
+  repeatPenalty,
+  onRepeatPenaltyChange,
+  topP,
+  onTopPChange,
+  minP,
+  onMinPChange,
   maxTokens,
   onMaxTokensChange,
   stats,
   chatId,
+  models,
+  loadingModels
 }: ModelSettingsPanelProps) {
-  const [models, setModels] = useState<{name: string, supports_reasoning: boolean, supports_vision?: boolean}[]>([]);
-  const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [visionEnabled, setVisionEnabled] = useState(false);
@@ -119,79 +132,20 @@ export function ModelSettingsPanel({
   };
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function fetchModels(attempt = 1) {
-      try {
-        const res = await fetch('http://127.0.0.1:8000/api/chat/models');
-        if (!res.ok) throw new Error('Failed to fetch models');
-        const data = await res.json();
-        if (cancelled) return;
-
-        const rawModels = Array.isArray(data)
-          ? data
-          : Array.isArray(data.models)
-            ? data.models
-            : [];
-
-        // Gracefully handle strings if backend hasn't restarted yet
-        const formattedModels = rawModels.map((m: any) => 
-          typeof m === 'string' ? { name: m, supports_reasoning: false, supports_vision: false } : m
-        );
-
-        setModels(formattedModels);
-        setFetchError(formattedModels.length === 0);
-
-        const hasSelectedModel = formattedModels.some((m: {name: string, supports_reasoning: boolean, supports_vision?: boolean}) => m.name === selectedModel);
-        if (formattedModels.length > 0 && (!selectedModel || !hasSelectedModel)) {
-          const qwenModels = formattedModels.filter((m: any) => m.name.toLowerCase().includes('qwen'));
-          if (qwenModels.length > 0) {
-            const getParamCount = (name: string) => {
-              const matchB = name.match(/(\d+(?:\.\d+)?)b/i);
-              if (matchB) return parseFloat(matchB[1]);
-              const matchM = name.match(/(\d+(?:\.\d+)?)m/i);
-              if (matchM) return parseFloat(matchM[1]) / 1000;
-              return 0;
-            };
-            qwenModels.sort((a: any, b: any) => getParamCount(b.name) - getParamCount(a.name));
-            onModelChange(qwenModels[0].name);
-          } else {
-            onModelChange(formattedModels[0].name);
-          }
-        }
-        setLoading(false);
-      } catch (e) {
-        if (!cancelled) {
-          if (attempt < 10) {
-            setTimeout(() => fetchModels(attempt + 1), 1000);
-          } else {
-            setModels([]);
-            setFetchError(true);
-            setLoading(false);
-          }
-        }
-      }
-    }
-
-    fetchModels();
-    return () => { cancelled = true; };
-  }, []);
+    setFetchError(!loadingModels && models.length === 0);
+  }, [loadingModels, models]);
 
   return (
     <div className="model-settings-container">
-      <div className="panel-header">
-        <h2>Model & Memory Hub</h2>
-      </div>
-
       <div className="settings-content">
         {/* ── Model Selection ── */}
         <div className="settings-section" style={{ zIndex: 10 }}>
           <h3>Model Selection</h3>
-          {loading && <div className="model-loading">Loading models…</div>}
-          {!loading && fetchError && (
+          {loadingModels && <div className="model-loading">Loading models…</div>}
+          {!loadingModels && fetchError && (
             <div className="no-models-msg">No models found. Is Ollama running?</div>
           )}
-          {!loading && !fetchError && (
+          {!loadingModels && !fetchError && (
             <div className="custom-model-select-container" ref={dropdownRef}>
               <div 
                 className={`custom-model-select ${isDropdownOpen ? 'open' : ''}`}
@@ -279,6 +233,60 @@ export function ModelSettingsPanel({
               <span className="checkbox-label">Unlimited response length</span>
             </label>
           </div>
+          <div className="param-slider">
+            <label>
+              <span>Repetition Penalty</span>
+              <span>{repeatPenalty.toFixed(2)}</span>
+            </label>
+            <input
+              type="range"
+              min="1.0"
+              max="2.0"
+              step="0.05"
+              value={repeatPenalty}
+              onChange={(e) => onRepeatPenaltyChange(parseFloat(e.target.value))}
+              style={{
+                background: `linear-gradient(to right, var(--accent-color) 0%, var(--accent-color) ${((repeatPenalty - 1.0) / 1.0) * 100}%, rgba(255, 255, 255, 0.1) ${((repeatPenalty - 1.0) / 1.0) * 100}%, rgba(255, 255, 255, 0.1) 100%)`
+              }}
+              className="premium-slider"
+            />
+          </div>
+          <div className="param-slider">
+            <label>
+              <span>Top-P (Nucleus)</span>
+              <span>{topP.toFixed(2)}</span>
+            </label>
+            <input
+              type="range"
+              min="0.0"
+              max="1.0"
+              step="0.05"
+              value={topP}
+              onChange={(e) => onTopPChange(parseFloat(e.target.value))}
+              style={{
+                background: `linear-gradient(to right, var(--accent-color) 0%, var(--accent-color) ${topP * 100}%, rgba(255, 255, 255, 0.1) ${topP * 100}%, rgba(255, 255, 255, 0.1) 100%)`
+              }}
+              className="premium-slider"
+            />
+          </div>
+          <div className="param-slider">
+            <label>
+              <span>Min-P</span>
+              <span>{minP.toFixed(2)}</span>
+            </label>
+            <input
+              type="range"
+              min="0.0"
+              max="1.0"
+              step="0.01"
+              value={minP}
+              onChange={(e) => onMinPChange(parseFloat(e.target.value))}
+              style={{
+                background: `linear-gradient(to right, var(--accent-color) 0%, var(--accent-color) ${minP * 100}%, rgba(255, 255, 255, 0.1) ${minP * 100}%, rgba(255, 255, 255, 0.1) 100%)`
+              }}
+              className="premium-slider"
+            />
+          </div>
         </div>
 
         {/* ── Reasoning Engine Indicator ── */}
@@ -310,8 +318,6 @@ export function ModelSettingsPanel({
           </div>
         )}
 
-        {/* ── Modular Context/Memory Hub inline ── */}
-        <ContextOptimizerPanel stats={stats} wsState={selectedModel} chatId={chatId} />
 
         {/* ── Sensory Input Telemetry ── */}
         <div className="settings-section">
@@ -340,6 +346,7 @@ export function ModelSettingsPanel({
 
           <div className="agent-status-list">
             <button 
+              type="button"
               className={`vision-toggle-btn ${visionEnabled ? 'active' : ''}`}
               onClick={handleToggleVision}
               disabled={!visionInstalled}
@@ -361,6 +368,7 @@ export function ModelSettingsPanel({
               {visionEnabled ? 'Disable Vision Feed' : 'Enable Vision Feed'}
             </button>
             <button 
+              type="button"
               className={`vision-toggle-btn ${audioEnabled ? 'active' : ''}`}
               onClick={handleToggleAudio}
               disabled={!audioInstalled}

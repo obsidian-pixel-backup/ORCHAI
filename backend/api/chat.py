@@ -5,6 +5,7 @@ import httpx
 import asyncio
 import sys
 import os
+import math
 from typing import List, Dict, Any, Optional
 from api.context_engine import ContextOrchestrator, estimate_tokens
 
@@ -295,10 +296,20 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
     # We will let Ollama automatically calculate the best layer offload (num_gpu).
     # However, Ollama's default context size is 2048, which truncates web-scraped content.
-    # Set it to 131072 to prevent output truncation when processing large data and allow full context windows.
+    # Dynamically calculate context size based on actual prompt requirements
     merged_options = dict(options) if options else {}
     if "num_ctx" not in merged_options:
-        merged_options["num_ctx"] = 131072
+        # Sum estimated tokens across all messages
+        total_prompt_tokens = sum(estimate_tokens(msg.get("content", "")) for msg in orchestrated_messages)
+        # Factor in expected generation length (buffer + max tokens if provided)
+        num_predict = merged_options.get("num_predict", 4096)
+        if num_predict < 0:
+            num_predict = 4096
+        target_ctx = total_prompt_tokens + num_predict + 1024 # Add 1k token safety buffer
+        
+        # Round up to nearest power of 2 for memory efficiency, with min 4096 and max 131072
+        power_of_2 = 2 ** math.ceil(math.log2(max(target_ctx, 4096)))
+        merged_options["num_ctx"] = min(power_of_2, 131072)
     
     # Define available tools
     tools = [
@@ -589,10 +600,13 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         return f"Error executing {func_name}: {str(e)}"
                 return f"Error: Tool {func_name} not recognized."
 
-                # Move overall counters outside the loop so tool executions don't reset them
-                overall_token_count = 0
-                total_time_spent_generating = 0
-                overall_prompt_eval_count = 0
+            # Move overall counters outside the loop so tool executions don't reset them
+            overall_token_count = 0
+            overall_thinking_token_count = 0
+            overall_content_token_count = 0
+            user_input_tokens = estimate_tokens(last_user_query)
+            total_time_spent_generating = 0
+            overall_prompt_eval_count = 0
 
             while True:
                 # 4. Formulate the official Ollama payload
@@ -622,6 +636,17 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     f"{OLLAMA_BASE_URL}/api/chat",
                     json=ollama_payload,
                 ) as response:
+                    if response.status_code != 200:
+                        error_text = await response.aread()
+                        error_msg = error_text.decode('utf-8', errors='ignore')
+                        try:
+                            error_json = json.loads(error_msg)
+                            if "error" in error_json:
+                                error_msg = error_json["error"]
+                        except json.JSONDecodeError:
+                            pass
+                        raise Exception(f"Ollama returned {response.status_code}: {error_msg}")
+
                     is_thinking = False
                     async for line in response.aiter_lines():
                         if not line.strip():
@@ -630,6 +655,9 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             chunk = json.loads(line)
                         except json.JSONDecodeError:
                             continue
+
+                        if "error" in chunk:
+                            raise Exception(chunk["error"])
 
                         message_data = chunk.get("message", {})
                         
@@ -647,6 +675,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                 first_token_time = asyncio.get_event_loop().time()
                             token_count += 1
                             overall_token_count += 1
+                            if thinking_token:
+                                overall_thinking_token_count += 1
+                            if content_token:
+                                overall_content_token_count += 1
                         
                         elapsed = asyncio.get_event_loop().time() - start_time
                         current_overall_elapsed = total_time_spent_generating + elapsed
@@ -666,6 +698,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                         "done": False,
                                         "stats": {
                                             "tokens": overall_token_count,
+                                            "content_tokens": overall_content_token_count,
+                                            "thinking_tokens": overall_thinking_token_count,
+                                            "user_input_tokens": user_input_tokens,
+                                            "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
                                             "tokens_per_second": round(tokens_per_sec, 1),
                                             "elapsed": round(current_overall_elapsed, 2),
                                         },
@@ -685,6 +721,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                     "done": False,
                                     "stats": {
                                         "tokens": overall_token_count,
+                                        "content_tokens": overall_content_token_count,
+                                        "thinking_tokens": overall_thinking_token_count,
+                                        "user_input_tokens": user_input_tokens,
+                                        "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
                                         "tokens_per_second": round(tokens_per_sec, 1),
                                         "elapsed": round(current_overall_elapsed, 2),
                                     },
@@ -708,6 +748,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                         "done": False,
                                         "stats": {
                                             "tokens": overall_token_count,
+                                            "content_tokens": overall_content_token_count,
+                                            "thinking_tokens": overall_thinking_token_count,
+                                            "user_input_tokens": user_input_tokens,
+                                            "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
                                             "tokens_per_second": round(tokens_per_sec, 1),
                                             "elapsed": round(current_overall_elapsed, 2),
                                         },
@@ -726,6 +770,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                     "done": False,
                                     "stats": {
                                         "tokens": overall_token_count,
+                                        "content_tokens": overall_content_token_count,
+                                        "thinking_tokens": overall_thinking_token_count,
+                                        "user_input_tokens": user_input_tokens,
+                                        "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
                                         "tokens_per_second": round(tokens_per_sec, 1),
                                         "elapsed": round(current_overall_elapsed, 2),
                                     },
@@ -749,6 +797,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                         "done": False,
                                         "stats": {
                                             "tokens": overall_token_count,
+                                            "content_tokens": overall_content_token_count,
+                                            "thinking_tokens": overall_thinking_token_count,
+                                            "user_input_tokens": user_input_tokens,
+                                            "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
                                             "tokens_per_second": round(tokens_per_sec, 1),
                                             "elapsed": round(current_overall_elapsed, 2),
                                         },
@@ -814,6 +866,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             "done": False,
                             "stats": {
                                 "tokens": overall_token_count,
+                                "content_tokens": overall_content_token_count,
+                                "thinking_tokens": overall_thinking_token_count,
+                                "user_input_tokens": user_input_tokens,
+                                "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
                                 "tokens_per_second": round(final_tps, 1) if 'final_tps' in locals() else 0,
                                 "elapsed": round(total_time_spent_generating, 2),
                             }
@@ -844,6 +900,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             "done": False,
                             "stats": {
                                 "tokens": overall_token_count,
+                                "content_tokens": overall_content_token_count,
+                                "thinking_tokens": overall_thinking_token_count,
+                                "user_input_tokens": user_input_tokens,
+                                "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
                                 "tokens_per_second": round(final_tps, 1) if 'final_tps' in locals() else 0,
                                 "elapsed": round(total_time_spent_generating, 2),
                             }
@@ -871,6 +931,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             "done": False,
                             "stats": {
                                 "tokens": overall_token_count,
+                                "content_tokens": overall_content_token_count,
+                                "thinking_tokens": overall_thinking_token_count,
+                                "user_input_tokens": user_input_tokens,
+                                "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
                                 "tokens_per_second": round(final_tps, 1) if 'final_tps' in locals() else 0,
                                 "elapsed": round(total_time_spent_generating, 2),
                             }
@@ -911,6 +975,10 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             "done": True,
                             "stats": {
                                 "tokens": final_eval_count,
+                                "content_tokens": overall_content_token_count,
+                                "thinking_tokens": overall_thinking_token_count,
+                                "user_input_tokens": user_input_tokens,
+                                "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
                                 "tokens_per_second": round(final_tps, 1),
                                 "elapsed": round(total_time_spent_generating, 2),
                                 "model": model,
@@ -956,12 +1024,14 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             websocket,
         )
     except Exception as e:
+        import traceback
+        err_msg = traceback.format_exc()
         await manager.send_personal_message(
             json.dumps({
                 "type": "error",
                 "id": msg_id,
                 "role": "model",
-                "content": f"Error communicating with Ollama: {str(e)}",
+                "content": f"Error communicating with Ollama: {err_msg}",
                 "done": True,
             }),
             websocket,
