@@ -24,6 +24,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import asyncio
 import json
+import os
 import re
 import ssl
 
@@ -292,6 +293,188 @@ async def pull_model(payload: PullRequest):
         if not model:
             yield json.dumps({"status": "error", "error": "No model specified.", "done": True}) + "\n"
             return
+
+        # Check if the model name component exceeds 80 characters
+        is_custom = False
+        author = ""
+        repo_name = ""
+        quant = "latest"
+        
+        if model.startswith("hf.co/"):
+            try:
+                path_part = model[len("hf.co/"):]
+                if ":" in path_part:
+                    repo_part, quant = path_part.rsplit(":", 1)
+                else:
+                    repo_part = path_part
+                    quant = "latest"
+                
+                if "/" in repo_part:
+                    author, repo_name = repo_part.split("/", 1)
+                    if len(repo_name) > 80:
+                        is_custom = True
+            except Exception:
+                pass
+
+        if is_custom:
+            temp_filepath = None
+            try:
+                # 1. Resolve file on Hugging Face
+                headers = {"User-Agent": "Mozilla/5.0"}
+                async with httpx.AsyncClient(timeout=15.0, verify=_HF_SSL) as client:
+                    hf_res = await client.get(
+                        f"https://huggingface.co/api/models/{author}/{repo_name}/tree/main",
+                        params={"recursive": "true"},
+                        headers=headers
+                    )
+                    if hf_res.status_code != 200:
+                        yield json.dumps({
+                            "status": "error",
+                            "error": f"Hugging Face API returned {hf_res.status_code}: {hf_res.text[:100]}",
+                            "done": True
+                        }) + "\n"
+                        return
+                    files_list = hf_res.json()
+                
+                target_file = None
+                for entry in files_list:
+                    path = entry.get("path", "")
+                    if not path.lower().endswith(".gguf"):
+                        continue
+                    if _SHARD_RE.search(path):
+                        continue
+                    filename = path.split("/")[-1]
+                    stem = filename[:-5]
+                    match = _QUANT_RE.search(stem)
+                    file_quant = match.group(1) if match else "latest"
+                    if file_quant.lower() == quant.lower():
+                        target_file = entry
+                        break
+                
+                if not target_file:
+                    yield json.dumps({
+                        "status": "error",
+                        "error": f"Could not find a GGUF file for quantization '{quant}' in repository.",
+                        "done": True
+                    }) + "\n"
+                    return
+                
+                filename = target_file.get("path")
+                lfs = target_file.get("lfs") or {}
+                digest = lfs.get("oid")
+                size = lfs.get("size") or target_file.get("size") or 0
+                
+                if not digest:
+                    yield json.dumps({
+                        "status": "error",
+                        "error": "The GGUF file is not tracked by LFS (no SHA256 digest found).",
+                        "done": True
+                    }) + "\n"
+                    return
+                
+                # 2. Check if the blob already exists in Ollama
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    try:
+                        blob_check = await client.head(f"{OLLAMA_BASE_URL}/api/blobs/sha256:{digest}")
+                        blob_exists = blob_check.status_code == 200
+                    except Exception:
+                        blob_exists = False
+                
+                # 3. Create truncated model name
+                truncated_repo = repo_name[:70].rstrip(".-_")
+                custom_model_name = f"hf.co/{author}/{truncated_repo}:{quant}"
+                
+                if not blob_exists:
+                    # 4. Stream Download from Hugging Face
+                    download_url = f"https://huggingface.co/{author}/{repo_name}/resolve/main/{filename}"
+                    backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    downloads_dir = os.path.join(backend_dir, "downloads")
+                    os.makedirs(downloads_dir, exist_ok=True)
+                    temp_filepath = os.path.join(downloads_dir, f"{digest}.gguf")
+                    
+                    completed = 0
+                    async with httpx.AsyncClient(follow_redirects=True, timeout=None, verify=_HF_SSL) as dl_client:
+                        async with dl_client.stream("GET", download_url, headers=headers) as dl_res:
+                            if dl_res.status_code != 200:
+                                raise Exception(f"Hugging Face download returned status {dl_res.status_code}")
+                            total_size = int(dl_res.headers.get("content-length", 0)) or size
+                            with open(temp_filepath, "wb") as f:
+                                async for chunk in dl_res.aiter_bytes(chunk_size=1024*1024):
+                                    f.write(chunk)
+                                    completed += len(chunk)
+                                    percent = round(completed / total_size * 100, 1) if total_size else 0.0
+                                    yield json.dumps({
+                                        "status": f"Downloading GGUF ({_human_size(completed)} / {_human_size(total_size)})...",
+                                        "completed": completed,
+                                        "total": total_size,
+                                        "percent": percent
+                                    }) + "\n"
+                    
+                    # 5. Upload blob to Ollama
+                    yield json.dumps({
+                        "status": "Registering model blob with Ollama (this may take a few seconds)...",
+                        "completed": total_size,
+                        "total": total_size,
+                        "percent": 99.0
+                    }) + "\n"
+                    
+                    async def file_sender():
+                        with open(temp_filepath, "rb") as f:
+                            while True:
+                                chunk = f.read(1024*1024)
+                                if not chunk:
+                                    break
+                                yield chunk
+                    
+                    async with httpx.AsyncClient(timeout=None) as client:
+                        r = await client.post(
+                            f"{OLLAMA_BASE_URL}/api/blobs/sha256:{digest}",
+                            content=file_sender()
+                        )
+                        if r.status_code not in (200, 201):
+                            raise Exception(f"Failed to upload blob to Ollama: {r.text}")
+                
+                # 6. Create model in Ollama
+                yield json.dumps({
+                    "status": "Creating model in Ollama...",
+                    "percent": 99.5
+                }) + "\n"
+                
+                async with httpx.AsyncClient(timeout=None) as client:
+                    async with client.stream(
+                        "POST",
+                        f"{OLLAMA_BASE_URL}/api/create",
+                        json={
+                            "model": custom_model_name,
+                            "files": {
+                                "model.gguf": f"sha256:{digest}"
+                            },
+                            "stream": True
+                        }
+                    ) as create_res:
+                        if create_res.status_code != 200:
+                            raise Exception(f"Ollama create API returned status {create_res.status_code}")
+                        async for line in create_res.aiter_lines():
+                            if not line.strip():
+                                continue
+                            try:
+                                evt = json.loads(line)
+                                if evt.get("status") == "success":
+                                    evt["done"] = True
+                                yield json.dumps(evt) + "\n"
+                            except Exception:
+                                yield line + "\n"
+                                
+            except Exception as e:
+                yield json.dumps({"status": "error", "error": str(e), "done": True}) + "\n"
+            finally:
+                if temp_filepath and os.path.exists(temp_filepath):
+                    try:
+                        os.remove(temp_filepath)
+                    except Exception:
+                        pass
+            return
+
         try:
             async with httpx.AsyncClient(timeout=None) as client:
                 async with client.stream(

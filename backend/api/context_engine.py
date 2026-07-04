@@ -5,6 +5,7 @@ import asyncio
 import logging
 import sqlite3
 import json
+import threading
 from typing import List, Dict, Any, Tuple, Optional
 import httpx
 
@@ -133,7 +134,7 @@ class ContextOrchestrator:
         self._index = SparseMemoryIndex()
         
         # Configuration parameters
-        self.active_window_limit: int = 2000  # Token limit before compressing
+        self.active_window_limit: int = 64000  # Token limit before compressing (rolling window starts at 64k)
         self.dynamic_consolidation: bool = True
         self.semantic_recall: bool = True
         self.base_system_prompt: str = (
@@ -171,8 +172,20 @@ class ContextOrchestrator:
         self._consolidation_generation: int = 0
         self.sensory_context: str = ""
         
-        self._init_db()
-        self._load_from_db()
+        self._db_lock = threading.Lock()
+        with self._db_lock:
+            self._init_db()
+            self._load_from_db()
+
+    def _run_in_db_thread(self, func, *args, **kwargs):
+        """Run a database operation in a background thread under the database lock."""
+        def locked_exec():
+            with self._db_lock:
+                try:
+                    func(*args, **kwargs)
+                except Exception as e:
+                    logger.error(f"Database background execution error: {e}")
+        threading.Thread(target=locked_exec, daemon=True).start()
 
     @property
     def messages(self):
@@ -263,10 +276,12 @@ class ContextOrchestrator:
                 self._index.add_message(msg["id"], msg["role"], msg["content"])
 
     def _save_session_state(self):
-        with self._get_db_connection() as conn:
-            conn.execute("UPDATE sessions SET world_state = ?, active_window_limit = ?, dynamic_consolidation = ?, semantic_recall = ?, consolidated_up_to = ? WHERE session_id = ?",
-                (self._world_state, self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, self.session_id))
-            conn.commit()
+        def do_save():
+            with self._get_db_connection() as conn:
+                conn.execute("UPDATE sessions SET world_state = ?, active_window_limit = ?, dynamic_consolidation = ?, semantic_recall = ?, consolidated_up_to = ? WHERE session_id = ?",
+                    (self._world_state, self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, self.session_id))
+                conn.commit()
+        self._run_in_db_thread(do_save)
 
     def reset(self):
         """Reset the conversation context."""
@@ -278,10 +293,12 @@ class ContextOrchestrator:
         self._consolidation_generation += 1
         self.sensory_context = ""
         
-        with self._get_db_connection() as conn:
-            conn.execute("DELETE FROM messages WHERE session_id = ?", (self.session_id,))
-            conn.execute("UPDATE sessions SET world_state = '', consolidated_up_to = -1 WHERE session_id = ?", (self.session_id,))
-            conn.commit()
+        def do_reset():
+            with self._get_db_connection() as conn:
+                conn.execute("DELETE FROM messages WHERE session_id = ?", (self.session_id,))
+                conn.execute("UPDATE sessions SET world_state = '', consolidated_up_to = -1 WHERE session_id = ?", (self.session_id,))
+                conn.commit()
+        self._run_in_db_thread(do_reset)
 
     def sync_frontend_state(self, raw_messages: List[Dict[str, Any]]):
         """Syncs orchestrator's local history with frontend (handles edits/truncations using user messages)."""
@@ -315,9 +332,11 @@ class ContextOrchestrator:
                 self._save_session_state()
             self._consolidation_generation += 1
             
-            with self._get_db_connection() as conn:
-                conn.execute("DELETE FROM messages WHERE session_id = ? AND msg_index >= ?", (self.session_id, len(self._messages)))
-                conn.commit()
+            def do_truncate():
+                with self._get_db_connection() as conn:
+                    conn.execute("DELETE FROM messages WHERE session_id = ? AND msg_index >= ?", (self.session_id, len(self._messages)))
+                    conn.commit()
+            self._run_in_db_thread(do_truncate)
 
         # Add new user messages
         for f_msg in f_user_msgs[match_count:]:
@@ -354,10 +373,12 @@ class ContextOrchestrator:
         # Always index it immediately
         self._index.add_message(msg_id, role, content)
         
-        with self._get_db_connection() as conn:
-            conn.execute("INSERT OR REPLACE INTO messages (session_id, id, role, content, timestamp, estimated_tokens, images_json, msg_index, tool_calls_json, name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (self.session_id, msg_id, role, content, msg["timestamp"], msg["estimated_tokens"], images_json, msg_index, tool_calls_json, name))
-            conn.commit()
+        def do_insert():
+            with self._get_db_connection() as conn:
+                conn.execute("INSERT OR REPLACE INTO messages (session_id, id, role, content, timestamp, estimated_tokens, images_json, msg_index, tool_calls_json, name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (self.session_id, msg_id, role, content, msg["timestamp"], msg["estimated_tokens"], images_json, msg_index, tool_calls_json, name))
+                conn.commit()
+        self._run_in_db_thread(do_insert)
             
         return msg_id
 
@@ -495,7 +516,7 @@ class ContextOrchestrator:
                 "stream": False,
                 "options": {
                     "temperature": 0.1,
-                    "num_ctx": 131072,
+                    "num_ctx": 16384,
                     "num_predict": -1
                 }
             }
@@ -553,26 +574,12 @@ class ContextOrchestrator:
         except ImportError:
             pass
             
-                # Inject explicitly added tools dynamically if needed, or rely on Ollama's tool handling.
+        # Inject explicitly added tools dynamically if needed, or rely on Ollama's tool handling.
         if not model_supports_tools and tools:
             import json
             schema_str = json.dumps([t["function"] for t in tools], indent=2)
             system_content += f"""\n\nAVAILABLE TOOLS:\nYou have access to the following tools:\n{schema_str}\n\nTo use a tool, you MUST output a raw JSON block containing the exact `name` and `arguments` specified above.\nYour response MUST contain the following block:\n```json\n{{\n  "name": "tool_name",\n  "arguments": {{\n    "arg_name": "arg_value"\n  }}\n}}\n```\nDo NOT wrap your tool call in any other syntax. We will parse the Markdown JSON block. Wait for the system to return the result before proceeding."""
 
-
-        # Inject current system time
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        system_content += f"\n\nCURRENT SYSTEM TIME: {current_time}\n"
-        
-        # Inject Real-time Sensory Context if available
-        if self.sensory_context:
-            system_content += (
-                "\n\n"
-                "### REAL-TIME SENSORY DATA (Vision/Screen)\n"
-                "The following is an automated description of what the user is currently looking at on their screen. This is strictly passive context for your awareness. DO NOT assume the user wants you to act on it unless their explicit message asks you to do so:\n"
-                f"{self.sensory_context}"
-            )
-        
         # 2. Inject consolidated World State (STATIC PREFIX)
         if self._world_state:
             system_content += (
@@ -597,27 +604,30 @@ class ContextOrchestrator:
                 compiled_msg["name"] = msg["name"]
             compiled_messages.append(compiled_msg)
 
-        # 4. Inject Semantically Recalled episodic memories BEFORE the LATEST user message (DYNAMIC)
-        # This prevents the recalled memories from hijacking the recency bias.
-        if self.semantic_recall and archived and latest_query:
-            # Gather excluded IDs (current active window messages) to avoid duplication
-            active_ids = [msg["id"] for msg in active]
-            recalled_docs = self._index.search(latest_query, top_k=2, exclude_ids=active_ids)
+        # 4. Construct dynamic context (Time, Sensory Context, Recalled Memories) to prepend to the user's latest query (DYNAMIC SUFFIX)
+        dynamic_context = ""
+        
+        # Inject current system time
+        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        dynamic_context += f"CURRENT SYSTEM TIME: {current_time}\n\n"
+        
+        # Inject Real-time Sensory Context if available
+        if self.sensory_context:
+            dynamic_context += (
+                "### REAL-TIME SENSORY DATA (Vision/Screen)\n"
+                "The following is an automated description of what the user is currently looking at on their screen. This is strictly passive context for your awareness. DO NOT assume the user wants you to act on it unless their explicit message asks you to do so:\n"
+                f"{self.sensory_context}\n\n"
+            )
             
-            if recalled_docs:
-                recall_content = "<recalled_memory>\n### RECALLED ARCHIVED MEMORIES\n"
-                recall_content += "These are OLD, archived messages from earlier in the session. DO NOT confuse them with the current conversation. "
-                recall_content += "Use them ONLY if the user explicitly refers to past information. Otherwise, prioritize the active conversation below.\n\n"
-                for doc in recalled_docs:
-                    role_label = "USER" if doc["role"] == "user" else "ASSISTANT"
-                    recall_content += f"-[Archived Turn] {role_label}: {doc['content']}\n"
-                recall_content += "</recalled_memory>\n\n"
+            # Automatic injection of memories has been disabled per user request in favor of the active search_memory_bank tool.
+            pass
                 
-                # Prepend to the last message if it's from the user to avoid recency bias hijacking
-                if compiled_messages and compiled_messages[-1]["role"] == "user":
-                    compiled_messages[-1]["content"] = recall_content + "USER's CURRENT REQUEST:\n" + compiled_messages[-1]["content"]
-                else:
-                    compiled_messages.append({"role": "user", "content": recall_content + "USER's CURRENT REQUEST:\n" + latest_query})
+        # Prepend to the last message if it's from the user, otherwise append it
+        if dynamic_context:
+            if compiled_messages and compiled_messages[-1]["role"] == "user":
+                compiled_messages[-1]["content"] = dynamic_context + "USER's CURRENT REQUEST:\n" + compiled_messages[-1]["content"]
+            else:
+                compiled_messages.append({"role": "user", "content": dynamic_context + "USER's CURRENT REQUEST:\n" + latest_query})
             
         return compiled_messages
 

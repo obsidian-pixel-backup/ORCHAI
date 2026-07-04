@@ -7,6 +7,7 @@ using faster-whisper (same model already loaded by AudioListener).
 from fastapi import APIRouter, UploadFile, File, HTTPException
 import logging
 import io
+import asyncio
 
 logger = logging.getLogger("orchai.api.speech")
 
@@ -58,12 +59,15 @@ async def transcribe_audio(audio: UploadFile = File(...)):
 
         audio_io = io.BytesIO(audio_bytes)
 
-        segments, _info = model.transcribe(
-            audio_io, 
-            beam_size=5,
-            initial_prompt="Hello ORCHAI. Can you get me the Cape Town weather for today?"
-        )
-        text = " ".join([segment.text for segment in segments]).strip()
+        def run_transcription():
+            segments, _ = model.transcribe(
+                audio_io,
+                beam_size=5,
+                initial_prompt="Hello ORCHAI. Can you get me the Cape Town weather for today?"
+            )
+            return " ".join([segment.text for segment in segments]).strip()
+
+        text = await asyncio.to_thread(run_transcription)
 
         logger.info(f"Transcribed: {text}")
         return {"text": text, "success": True}

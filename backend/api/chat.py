@@ -560,6 +560,23 @@ def get_available_tools():
                     "required": ["db_path", "query"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "search_memory_bank",
+                "description": "Searches the archived conversation memory using semantic/keyword retrieval (BM25) to recall specific facts, user details, past instructions, or code snippets from older parts of the conversation that are no longer in the active window.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The semantic query or keywords to search for in your archived memories."
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
         }
     ]
 
@@ -627,9 +644,9 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             num_predict = 32768
         target_ctx = total_prompt_tokens + num_predict + 1024 # Add 1k token safety buffer
         
-        # Round up to nearest power of 2 for memory efficiency, with min 4096 and max 131072
+        # Round up to nearest power of 2 for memory efficiency, with min 4096 and max 65536
         power_of_2 = 2 ** math.ceil(math.log2(max(target_ctx, 4096)))
-        merged_options["num_ctx"] = min(power_of_2, 131072)
+        merged_options["num_ctx"] = min(power_of_2, 65536)
     
     # Define available tools
 
@@ -846,6 +863,33 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         websocket
                     )
                     return "Checkpoint initiated."
+
+                elif func_name == "search_memory_bank":
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_execution",
+                            "id": tool_msg_id,
+                            "tool": func_name,
+                            "args": func_args
+                        }),
+                        websocket
+                    )
+                    query = func_args.get("query", "")
+                    try:
+                        active_msgs, archived_msgs = orch.partition_context()
+                        active_ids = [msg["id"] for msg in active_msgs if msg.get("id")]
+                        # Retrieve matching memories from the index
+                        results = orch.index.search(query, top_k=5, exclude_ids=active_ids)
+                        if not results:
+                            return "No matching memories found in the archive."
+                        
+                        formatted = "Found the following old messages in the conversation archive:\n\n"
+                        for doc in results:
+                            role_label = "USER" if doc["role"] == "user" else "ASSISTANT"
+                            formatted += f"-[Archived Turn] {role_label}: {doc['content']}\n"
+                        return formatted
+                    except Exception as e:
+                        return f"Error executing {func_name}: {str(e)}"
 
                 elif func_name in ["read_file", "write_file", "append_file", "list_directory"]:
                     await manager.send_personal_message(
