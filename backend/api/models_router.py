@@ -46,7 +46,7 @@ router = APIRouter()
 
 # Matches the quantization token at the end of a GGUF filename, e.g.
 # "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf" -> "Q4_K_M".
-_QUANT_RE = re.compile(r"(IQ\d[\w]*|Q\d[\w]*|BF16|F16|F32)", re.IGNORECASE)
+_QUANT_RE = re.compile(r"(?:^|[-_])(IQ[1-4]_[A-Z]+|Q[2-8]_[A-Z0-9]+(?:_[A-Z]+)?|BF16|F16|F32)(?:[-_.]|$)", re.IGNORECASE)
 # Detects a split/multi-part GGUF shard, e.g. "...-00001-of-00003.gguf".
 _SHARD_RE = re.compile(r"-\d{5}-of-\d{5}", re.IGNORECASE)
 
@@ -190,16 +190,15 @@ async def delete_model(payload: DeleteRequest):
 async def search_huggingface(query: str = "", limit: int = 20):
     """Search Hugging Face for GGUF model repos compatible with Ollama."""
     q = (query or "").strip()
-    if not q:
-        return {"results": []}
     try:
         params = {
-            "search": q,
             "filter": "gguf",
             "sort": "downloads",
             "direction": "-1",
             "limit": str(max(1, min(limit, 50))),
         }
+        if q:
+            params["search"] = q
         async with httpx.AsyncClient(timeout=15.0, verify=_HF_SSL) as client:
             res = await client.get(f"{HF_API_URL}/models", params=params)
             if res.status_code != 200:
@@ -251,7 +250,7 @@ async def list_huggingface_files(repo: str = ""):
                 filename = path.split("/")[-1]
                 stem = filename[:-5]  # strip ".gguf"
                 match = _QUANT_RE.search(stem)
-                quant = match.group(0) if match else "latest"
+                quant = match.group(1) if match else "latest"
                 lfs = entry.get("lfs") or {}
                 size = lfs.get("size") or entry.get("size") or 0
                 files.append({

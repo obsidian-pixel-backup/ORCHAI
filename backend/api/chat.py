@@ -262,57 +262,8 @@ async def generate_chat_title(payload: GenerateTitleRequest):
 
 # ── WebSocket Chat Handler with Orchestration ──
 
-async def stream_ollama_response(payload: dict, websocket: WebSocket):
-    """Orchestrates incoming chat request, executes RAG/Consolidation, and streams back token chunks."""
-    session_id = payload.get("session_id", "default")
-    model = payload.get("model", "north-mini-code-1.0:q4_K_M")
-    raw_messages = payload.get("messages", [])
-    options = payload.get("options", {})
-
-    orch = get_orchestrator(session_id)
-
-    # 1. Sync orchestrator's local history with the incoming messages array
-    orch.sync_frontend_state(raw_messages)
-
-    # 2. Get last user query to perform semantic retrieval
-    last_user_query = ""
-    for msg in reversed(raw_messages):
-        if msg.get("role") == "user":
-            last_user_query = msg.get("content", "")
-            break
-
-    # 3. Intercept & Orchestrate: Build optimal context prompt
-    orchestrated_messages = orch.build_orchestrated_prompt(last_user_query)
-
-    # 3b. Detect activated skills from the latest user message and inject their
-    # specialized methodology into the system prompt for this turn only.
-    try:
-        from skills import detect_active_skills, build_skill_injection
-        active_skill_ids = detect_active_skills(last_user_query)
-        if active_skill_ids and orchestrated_messages and orchestrated_messages[0].get("role") == "system":
-            orchestrated_messages[0]["content"] += build_skill_injection(active_skill_ids)
-    except ImportError:
-        pass
-
-    # We will let Ollama automatically calculate the best layer offload (num_gpu).
-    # However, Ollama's default context size is 2048, which truncates web-scraped content.
-    # Dynamically calculate context size based on actual prompt requirements
-    merged_options = dict(options) if options else {}
-    if "num_ctx" not in merged_options:
-        # Sum estimated tokens across all messages
-        total_prompt_tokens = sum(estimate_tokens(msg.get("content", "")) for msg in orchestrated_messages)
-        # Factor in expected generation length (buffer + max tokens if provided)
-        num_predict = merged_options.get("num_predict", 4096)
-        if num_predict < 0:
-            num_predict = 32768
-        target_ctx = total_prompt_tokens + num_predict + 1024 # Add 1k token safety buffer
-        
-        # Round up to nearest power of 2 for memory efficiency, with min 4096 and max 131072
-        power_of_2 = 2 ** math.ceil(math.log2(max(target_ctx, 4096)))
-        merged_options["num_ctx"] = min(power_of_2, 131072)
-    
-    # Define available tools
-    tools = [
+def get_available_tools():
+    return [
         {
             "type": "function",
             "function": {
@@ -612,6 +563,76 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         }
     ]
 
+async def stream_ollama_response(payload: dict, websocket: WebSocket):
+    """Orchestrates incoming chat request, executes RAG/Consolidation, and streams back token chunks."""
+    session_id = payload.get("session_id", "default")
+    model = payload.get("model", "north-mini-code-1.0:q4_K_M")
+    raw_messages = payload.get("messages", [])
+    options = payload.get("options", {})
+
+    orch = get_orchestrator(session_id)
+
+    # 1. Sync orchestrator's local history with the incoming messages array
+    orch.sync_frontend_state(raw_messages)
+
+    # 2. Get last user query to perform semantic retrieval
+    last_user_query = ""
+    for msg in reversed(raw_messages):
+        if msg.get("role") == "user":
+            last_user_query = msg.get("content", "")
+            break
+
+    # 3. Intercept & Orchestrate: Build optimal context prompt
+
+    tools = get_available_tools()
+    
+    # Detect model capabilities once
+    model_supports_tools = True
+    model_supports_thinking = True
+    try:
+        import httpx
+        async with httpx.AsyncClient() as c:
+            show_res = await c.post(f"{OLLAMA_BASE_URL}/api/show", json={"name": model})
+            if show_res.status_code == 200:
+                caps = show_res.json().get("capabilities", []) or []
+                if isinstance(caps, list) and caps:
+                    model_supports_tools = "tools" in caps
+                    model_supports_thinking = "thinking" in caps
+    except Exception:
+        pass
+
+    # 3. Intercept & Orchestrate: Build optimal context prompt
+    orchestrated_messages = orch.build_orchestrated_prompt(last_user_query, model_supports_tools=model_supports_tools, tools=tools)
+
+    # 3b. Detect activated skills from the latest user message and inject their
+    # specialized methodology into the system prompt for this turn only.
+    try:
+        from skills import detect_active_skills, build_skill_injection
+        active_skill_ids = detect_active_skills(last_user_query)
+        if active_skill_ids and orchestrated_messages and orchestrated_messages[0].get("role") == "system":
+            orchestrated_messages[0]["content"] += build_skill_injection(active_skill_ids)
+    except ImportError:
+        pass
+
+    # We will let Ollama automatically calculate the best layer offload (num_gpu).
+    # However, Ollama's default context size is 2048, which truncates web-scraped content.
+    # Dynamically calculate context size based on actual prompt requirements
+    merged_options = dict(options) if options else {}
+    if "num_ctx" not in merged_options:
+        # Sum estimated tokens across all messages
+        total_prompt_tokens = sum(estimate_tokens(msg.get("content", "")) for msg in orchestrated_messages)
+        # Factor in expected generation length (buffer + max tokens if provided)
+        num_predict = merged_options.get("num_predict", 4096)
+        if num_predict < 0:
+            num_predict = 32768
+        target_ctx = total_prompt_tokens + num_predict + 1024 # Add 1k token safety buffer
+        
+        # Round up to nearest power of 2 for memory efficiency, with min 4096 and max 131072
+        power_of_2 = 2 ** math.ceil(math.log2(max(target_ctx, 4096)))
+        merged_options["num_ctx"] = min(power_of_2, 131072)
+    
+    # Define available tools
+
     # Note: Skills are activated via [Skill: <label>] markers in the user message,
     # which are detected and injected into the system prompt (see detect_active_skills).
     # There is no apply_skill tool — skills are behavioral, not data.
@@ -867,17 +888,6 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             # Ollama's /api/show reports a `capabilities` list (e.g. ["completion",
             # "tools", "thinking", "vision"]). We only gate when that list is present
             # and non-empty, so older Ollama versions keep the previous behaviour.
-            model_supports_tools = True
-            model_supports_thinking = True
-            try:
-                show_res = await client.post(f"{OLLAMA_BASE_URL}/api/show", json={"name": model})
-                if show_res.status_code == 200:
-                    caps = show_res.json().get("capabilities", []) or []
-                    if isinstance(caps, list) and caps:
-                        model_supports_tools = "tools" in caps
-                        model_supports_thinking = "thinking" in caps
-            except Exception:
-                pass
 
             while True:
                 if consecutive_tool_iterations > 15 or consecutive_scaffold_iterations > 5:
@@ -1119,6 +1129,49 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             final_eval_count = overall_token_count
                             final_tps = tokens_per_sec
 
+                                # Generic fallback parsers for models without native tool parsing
+                if not full_tool_calls and full_content:
+                    import re
+                    
+                    # 1. XML / Hermes format: <tool_call>{"name": "...", "arguments": {...}}</tool_call>
+                    xml_matches = re.finditer(r'<tool_call>\s*(\{.*?\})\s*</tool_call>', full_content, re.DOTALL | re.IGNORECASE)
+                    for m in xml_matches:
+                        try:
+                            t = json.loads(m.group(1))
+                            if "name" in t:
+                                full_tool_calls.append({"function": {"name": t["name"], "arguments": t.get("arguments", {})}})
+                        except: pass
+
+                    # 2. Markdown JSON block fallback: ```json \n {"name": "..."} \n ```
+                    if not full_tool_calls:
+                        json_block_matches = re.finditer(r'```(?:json)?\s*(\{\s*"name"\s*:\s*".*?\})\s*```', full_content, re.DOTALL)
+                        for m in json_block_matches:
+                            try:
+                                t = json.loads(m.group(1))
+                                if "name" in t:
+                                    full_tool_calls.append({"function": {"name": t["name"], "arguments": t.get("arguments", {})}})
+                            except: pass
+
+                    # 3. GLM-4 style / Action format: CALL `tool`
+                    if not full_tool_calls:
+                        call_matches = re.finditer(r'CALL\s+`([^`]+)`(?:\s+with\s+(.+?))?(?=\nCALL\s+`|$)', full_content, re.IGNORECASE | re.DOTALL)
+                        for m in call_matches:
+                            tool_name = m.group(1).strip()
+                            tool_args = {}
+                            args_str = m.group(2)
+                            if args_str:
+                                arg_matches = re.finditer(r'`([^`]+)`\s*=\s*(?:"([^"]*)"|`([^`]*)`|([^\s,]+))', args_str)
+                                for am in arg_matches:
+                                    arg_name = am.group(1)
+                                    arg_val = am.group(2) if am.group(2) is not None else (am.group(3) if am.group(3) is not None else am.group(4))
+                                    tool_args[arg_name] = arg_val
+                            full_tool_calls.append({
+                                "function": {
+                                    "name": tool_name,
+                                    "arguments": tool_args
+                                }
+                            })
+                            
                 # Handle tool calls if the model requested them
                 if full_tool_calls:
                     orch.add_message(role="assistant", content=full_content, tool_calls=full_tool_calls)
@@ -1194,6 +1247,23 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         chronological_thinking_segments.append(full_thinking)
                     
                     consecutive_tool_iterations += 1
+                    
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "stream_split",
+                            "stats": {
+                                "tokens": overall_token_count,
+                                "content_tokens": overall_content_token_count,
+                                "thinking_tokens": overall_thinking_token_count,
+                                "user_input_tokens": user_input_tokens,
+                                "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
+                                "tokens_per_second": round(final_tps, 1) if 'final_tps' in locals() else 0,
+                                "elapsed": round(total_time_spent_generating, 2),
+                            }
+                        }),
+                        websocket,
+                    )
+
                     # Continue the while loop to send the tool results back to Ollama
                     continue
 
@@ -1265,6 +1335,23 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         chronological_thinking_segments.append(full_thinking)
                     
                     consecutive_scaffold_iterations += 1
+                    
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "stream_split",
+                            "stats": {
+                                "tokens": overall_token_count,
+                                "content_tokens": overall_content_token_count,
+                                "thinking_tokens": overall_thinking_token_count,
+                                "user_input_tokens": user_input_tokens,
+                                "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
+                                "tokens_per_second": round(final_tps, 1) if 'final_tps' in locals() else 0,
+                                "elapsed": round(total_time_spent_generating, 2),
+                            }
+                        }),
+                        websocket,
+                    )
+
                     # Trigger Stage 2 Rollout
                     continue
 
@@ -1399,10 +1486,7 @@ async def list_models():
                 data = response.json()
                 model_names = [m["name"] for m in data.get("models", [])]
                 
-                # Auto-inject Ornith models for self-evolving agentic coding
-                for ornith_model in ["ornith:9b", "ornith:35b"]:
-                    if not any(ornith_model in m for m in model_names):
-                        model_names.append(ornith_model)
+
                 
                 async def check_reasoning(m_name):
                     # Hardcode reasoning=True for ornith as it explicitly uses <think>

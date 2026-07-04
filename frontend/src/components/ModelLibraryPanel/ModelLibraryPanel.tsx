@@ -69,6 +69,29 @@ function friendlyModelLabel(model: string): string {
   return quant ? `${name} · ${quant}` : name;
 }
 
+function parseParamSize(sizeStr?: string): number {
+  if (!sizeStr) return 0;
+  const match = sizeStr.match(/([\d.]+)([A-Za-z]+)/);
+  if (!match) return 0;
+  const val = parseFloat(match[1]);
+  const unit = match[2].toUpperCase();
+  if (unit === 'B') return val * 1e9;
+  if (unit === 'M') return val * 1e6;
+  if (unit === 'T') return val * 1e12;
+  if (unit === 'K') return val * 1e3;
+  return val;
+}
+
+function inferHFCapabilities(repo: string, pipeline_tag: string) {
+  const lower = repo.toLowerCase();
+  return {
+    chat: lower.includes('chat') || lower.includes('instruct') || lower.includes('hermes'),
+    tools: lower.includes('tool') || lower.includes('function') || lower.includes('coder'),
+    vision: lower.includes('vl') || lower.includes('vision') || pipeline_tag === 'image-text-to-text',
+    reasoning: lower.includes('reason') || lower.includes('think') || lower.includes('math') || lower.includes('r1')
+  };
+}
+
 export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPanelProps) {
   const [tab, setTab] = useState<'installed' | 'discover'>('installed');
 
@@ -80,7 +103,19 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
   const [deleting, setDeleting] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
+  // Filters & Sorting for Installed
+  const [installedSearch, setInstalledSearch] = useState('');
+  const [installedSort, setInstalledSort] = useState<'name' | 'size_desc' | 'size_asc' | 'params_desc'>('size_desc');
+  const [capFilters, setCapFilters] = useState({
+    chat: false,
+    tools: false,
+    vision: false,
+    reasoning: false
+  });
+  const [sizeFilter, setSizeFilter] = useState<'all' | 'small' | 'medium' | 'large'>('all');
+
   // Discover (Hugging Face)
+  const [discoverSort, setDiscoverSort] = useState<'downloads' | 'likes' | 'params_desc' | 'name'>('downloads');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<HFResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -90,8 +125,8 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
 
-  // Active download
-  const [pull, setPull] = useState<PullState | null>(null);
+  // Active downloads
+  const [pulls, setPulls] = useState<Record<string, PullState>>({});
 
   const fetchInstalled = useCallback(async () => {
     setInstalledLoading(true);
@@ -136,11 +171,6 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
 
   const runSearch = useCallback(async (rawTerm: string) => {
     const term = rawTerm.trim();
-    if (!term) {
-      setResults([]);
-      setSearchError(null);
-      return;
-    }
     setSearching(true);
     setSearchError(null);
     setExpandedRepo(null);
@@ -165,16 +195,13 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
 
   // Live search: debounce keystrokes so results refresh automatically without
   // needing to click Search again. Each keystroke cancels the previous timer.
+  // When tab is 'discover', we also fetch top models if query is empty.
   useEffect(() => {
+    if (tab !== 'discover') return;
     const term = query.trim();
-    if (!term) {
-      setResults([]);
-      setSearchError(null);
-      return;
-    }
-    const timer = setTimeout(() => runSearch(term), 450);
+    const timer = setTimeout(() => runSearch(term), term ? 450 : 0);
     return () => clearTimeout(timer);
-  }, [query, runSearch]);
+  }, [query, tab, runSearch]);
 
   const handleExpand = async (repo: string) => {
     if (expandedRepo === repo) { setExpandedRepo(null); return; }
@@ -195,8 +222,11 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
   };
 
   const handlePull = async (model: string) => {
-    if (pull && !pull.error && pull.percent < 100 && pull.status !== 'done') return;
-    setPull({ model, status: 'starting', percent: 0 });
+    const p = pulls[model];
+    if (p && !p.error && p.percent < 100 && p.status !== 'done') return;
+    
+    setPulls(prev => ({ ...prev, [model]: { model, status: 'starting', percent: 0 } }));
+    
     try {
       const res = await fetch(`${API}/pull`, {
         method: 'POST',
@@ -209,11 +239,11 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
           const j = await res.json();
           if (j?.error || j?.detail) detail = j.error || j.detail;
         } catch { /* body wasn't JSON */ }
-        setPull({ model, status: 'error', percent: 0, error: detail });
+        setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: detail } }));
         return;
       }
       if (!res.body) {
-        setPull({ model, status: 'error', percent: 0, error: 'The backend did not return a download progress stream.' });
+        setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: 'The backend did not return a download progress stream.' } }));
         return;
       }
       const reader = res.body.getReader();
@@ -231,17 +261,20 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
           let evt: any;
           try { evt = JSON.parse(line); } catch { continue; }
           if (evt.error) {
-            setPull({ model, status: 'error', percent: 0, error: evt.error });
+            setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: evt.error } }));
             return;
           }
-          setPull({
-            model,
-            status: evt.status || 'downloading',
-            percent: typeof evt.percent === 'number' ? evt.percent : (evt.done ? 100 : 0),
-          });
+          setPulls(prev => ({
+            ...prev,
+            [model]: {
+              model,
+              status: evt.status || 'downloading',
+              percent: typeof evt.percent === 'number' ? evt.percent : (evt.done ? 100 : 0),
+            }
+          }));
         }
       }
-      setPull({ model, status: 'done', percent: 100 });
+      setPulls(prev => ({ ...prev, [model]: { model, status: 'done', percent: 100 } }));
       await fetchInstalled();
       onModelsChanged();
     } catch (e: any) {
@@ -252,11 +285,91 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
       const msg = isNetwork
         ? 'Couldn’t reach the ORCHAI backend (it may be starting up or was interrupted). Wait a moment and try the download again.'
         : (raw || 'Download failed.');
-      setPull({ model, status: 'error', percent: 0, error: msg });
+      setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: msg } }));
     }
   };
 
-  const isPulling = !!pull && !pull.error && pull.status !== 'done';
+  const isPulling = (model: string) => {
+    const p = pulls[model];
+    return !!p && !p.error && p.status !== 'done';
+  };
+
+  const getFilteredAndSortedInstalled = () => {
+    let list = [...installed];
+    
+    if (capFilters.chat) list = list.filter(m => m.can_chat !== false);
+    if (capFilters.tools) list = list.filter(m => m.supports_tools);
+    if (capFilters.vision) list = list.filter(m => m.supports_vision);
+    if (capFilters.reasoning) list = list.filter(m => m.supports_thinking);
+    
+    if (sizeFilter !== 'all') {
+      list = list.filter(m => {
+        const p = parseParamSize(m.parameter_size);
+        if (!p) return true;
+        if (sizeFilter === 'small') return p < 7e9;
+        if (sizeFilter === 'medium') return p >= 7e9 && p <= 14e9;
+        return p > 14e9;
+      });
+    }
+
+    if (installedSearch.trim()) {
+      const q = installedSearch.toLowerCase();
+      list = list.filter(m => 
+        m.name.toLowerCase().includes(q) || 
+        (m.family && m.family.toLowerCase().includes(q))
+      );
+    }
+    
+    list.sort((a, b) => {
+      if (installedSort === 'name') {
+        return a.name.localeCompare(b.name);
+      } else if (installedSort === 'size_desc') {
+        return (b.size_bytes || 0) - (a.size_bytes || 0);
+      } else if (installedSort === 'size_asc') {
+        return (a.size_bytes || 0) - (b.size_bytes || 0);
+      } else if (installedSort === 'params_desc') {
+        return parseParamSize(b.parameter_size) - parseParamSize(a.parameter_size);
+      }
+      return 0;
+    });
+    
+    return list;
+  };
+
+  const getFilteredAndSortedDiscover = () => {
+    let list = [...results];
+    
+    if (capFilters.chat) list = list.filter(m => inferHFCapabilities(m.repo, m.pipeline_tag).chat);
+    if (capFilters.tools) list = list.filter(m => inferHFCapabilities(m.repo, m.pipeline_tag).tools);
+    if (capFilters.vision) list = list.filter(m => inferHFCapabilities(m.repo, m.pipeline_tag).vision);
+    if (capFilters.reasoning) list = list.filter(m => inferHFCapabilities(m.repo, m.pipeline_tag).reasoning);
+    
+    if (sizeFilter !== 'all') {
+      list = list.filter(m => {
+        const p = parseParamSize(m.repo);
+        if (!p) return true;
+        if (sizeFilter === 'small') return p < 7e9;
+        if (sizeFilter === 'medium') return p >= 7e9 && p <= 14e9;
+        return p > 14e9;
+      });
+    }
+    
+    list.sort((a, b) => {
+      if (discoverSort === 'name') {
+        return a.repo.localeCompare(b.repo);
+      } else if (discoverSort === 'params_desc') {
+        return parseParamSize(b.repo) - parseParamSize(a.repo);
+      } else if (discoverSort === 'likes') {
+        return b.likes - a.likes;
+      }
+      return b.downloads - a.downloads;
+    });
+    
+    return list;
+  };
+
+  const processedInstalled = getFilteredAndSortedInstalled();
+  const processedDiscover = getFilteredAndSortedDiscover();
 
   return (
     <>
@@ -276,26 +389,30 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
           </button>
         </div>
 
-        {/* Active download banner (persists across tab switches) */}
-        {pull && (
-          <div className={`ml-pull-banner ${pull.error ? 'error' : pull.status === 'done' ? 'done' : ''}`}>
+        {/* Active download banners (persists across tab switches) */}
+        {Object.values(pulls).map((p) => (
+          <div key={p.model} className={`ml-pull-banner ${p.error ? 'error' : p.status === 'done' ? 'done' : ''}`}>
             <div className="ml-pull-top">
-              <span className="ml-pull-model" title={pull.model}>{friendlyModelLabel(pull.model)}</span>
+              <span className="ml-pull-model" title={p.model}>{friendlyModelLabel(p.model)}</span>
               <span className="ml-pull-status">
-                {pull.error ? 'Failed' : pull.status === 'done' ? 'Installed ✓' : `${pull.status} ${pull.percent}%`}
+                {p.error ? 'Failed' : p.status === 'done' ? 'Installed ✓' : `${p.status} ${p.percent}%`}
               </span>
-              {(pull.error || pull.status === 'done') && (
-                <button className="ml-pull-dismiss" onClick={() => setPull(null)}>✕</button>
+              {(p.error || p.status === 'done') && (
+                <button className="ml-pull-dismiss" onClick={() => setPulls(prev => {
+                  const next = { ...prev };
+                  delete next[p.model];
+                  return next;
+                })}>✕</button>
               )}
             </div>
-            {!pull.error && (
+            {!p.error && (
               <div className="ml-progress-track">
-                <div className="ml-progress-fill" style={{ width: `${pull.percent}%` }} />
+                <div className="ml-progress-fill" style={{ width: `${p.percent}%` }} />
               </div>
             )}
-            {pull.error && <div className="ml-pull-error">{pull.error}</div>}
+            {p.error && <div className="ml-pull-error">{p.error}</div>}
           </div>
-        )}
+        ))}
 
         <div className="ml-body">
           {tab === 'installed' && (
@@ -306,13 +423,66 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
                 <button className="ml-refresh" onClick={fetchInstalled} disabled={installedLoading}>Refresh</button>
               </div>
 
+              {!installedLoading && !installedError && installed.length > 0 && (
+                <div className="ml-installed-controls">
+                  <input
+                    type="text"
+                    className="ml-installed-search"
+                    placeholder="Filter models..."
+                    value={installedSearch}
+                    onChange={(e) => setInstalledSearch(e.target.value)}
+                  />
+                  <select
+                    className="ml-installed-sort"
+                    value={installedSort}
+                    onChange={(e) => setInstalledSort(e.target.value as any)}
+                  >
+                    <option value="size_desc">Largest First</option>
+                    <option value="size_asc">Smallest First</option>
+                    <option value="params_desc">Most Params</option>
+                    <option value="name">Name (A-Z)</option>
+                  </select>
+                  <select
+                    className="ml-installed-sort"
+                    value={sizeFilter}
+                    onChange={(e) => setSizeFilter(e.target.value as any)}
+                  >
+                    <option value="all">All Sizes</option>
+                    <option value="small">&lt; 7B Params</option>
+                    <option value="medium">7B - 14B Params</option>
+                    <option value="large">&gt; 14B Params</option>
+                  </select>
+                  <div className="ml-installed-caps-filter">
+                    <label>
+                      <input type="checkbox" checked={capFilters.chat} onChange={(e) => setCapFilters(prev => ({ ...prev, chat: e.target.checked }))} />
+                      💬 Chat
+                    </label>
+                    <label>
+                      <input type="checkbox" checked={capFilters.tools} onChange={(e) => setCapFilters(prev => ({ ...prev, tools: e.target.checked }))} />
+                      🔧 Tools
+                    </label>
+                    <label>
+                      <input type="checkbox" checked={capFilters.vision} onChange={(e) => setCapFilters(prev => ({ ...prev, vision: e.target.checked }))} />
+                      👁 Vision
+                    </label>
+                    <label>
+                      <input type="checkbox" checked={capFilters.reasoning} onChange={(e) => setCapFilters(prev => ({ ...prev, reasoning: e.target.checked }))} />
+                      🧠 Reasoning
+                    </label>
+                  </div>
+                </div>
+              )}
+
               {installedLoading && <div className="ml-msg">Loading installed models…</div>}
               {installedError && <div className="ml-msg error">{installedError}</div>}
               {!installedLoading && !installedError && installed.length === 0 && (
                 <div className="ml-msg">No models installed yet. Use the Discover tab to download one.</div>
               )}
+              {!installedLoading && !installedError && installed.length > 0 && processedInstalled.length === 0 && (
+                <div className="ml-msg">No models match your filters.</div>
+              )}
 
-              {installed.map((m) => (
+              {processedInstalled.map((m) => (
                 <div key={m.name} className="ml-model-row">
                   <div className="ml-model-info">
                     <span className="ml-model-name">{friendlyModelLabel(m.name)}</span>
@@ -360,17 +530,63 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
-                <button type="submit" disabled={searching || !query.trim()}>
+                <button type="submit" disabled={searching}>
                   {searching ? 'Searching…' : 'Search'}
                 </button>
               </form>
 
-              {searchError && <div className="ml-msg error">{searchError}</div>}
-              {!searching && !searchError && results.length === 0 && (
-                <div className="ml-msg">Search for a model to see downloadable GGUF quantizations.</div>
+              {!searching && !searchError && (
+                <div className="ml-installed-controls" style={{ marginTop: '-4px' }}>
+                  <select
+                    className="ml-installed-sort"
+                    value={discoverSort}
+                    onChange={(e) => setDiscoverSort(e.target.value as any)}
+                  >
+                    <option value="downloads">Most Downloaded</option>
+                    <option value="likes">Most Liked</option>
+                    <option value="params_desc">Most Params</option>
+                    <option value="name">Name (A-Z)</option>
+                  </select>
+                  <select
+                    className="ml-installed-sort"
+                    value={sizeFilter}
+                    onChange={(e) => setSizeFilter(e.target.value as any)}
+                  >
+                    <option value="all">All Sizes</option>
+                    <option value="small">&lt; 7B Params</option>
+                    <option value="medium">7B - 14B Params</option>
+                    <option value="large">&gt; 14B Params</option>
+                  </select>
+                  <div className="ml-installed-caps-filter">
+                    <label>
+                      <input type="checkbox" checked={capFilters.chat} onChange={(e) => setCapFilters(prev => ({ ...prev, chat: e.target.checked }))} />
+                      💬 Chat
+                    </label>
+                    <label>
+                      <input type="checkbox" checked={capFilters.tools} onChange={(e) => setCapFilters(prev => ({ ...prev, tools: e.target.checked }))} />
+                      🔧 Tools
+                    </label>
+                    <label>
+                      <input type="checkbox" checked={capFilters.vision} onChange={(e) => setCapFilters(prev => ({ ...prev, vision: e.target.checked }))} />
+                      👁 Vision
+                    </label>
+                    <label>
+                      <input type="checkbox" checked={capFilters.reasoning} onChange={(e) => setCapFilters(prev => ({ ...prev, reasoning: e.target.checked }))} />
+                      🧠 Reasoning
+                    </label>
+                  </div>
+                </div>
               )}
 
-              {results.map((r) => (
+              {searchError && <div className="ml-msg error">{searchError}</div>}
+              {!searching && !searchError && results.length === 0 && (
+                <div className="ml-msg">No models found.</div>
+              )}
+              {!searching && !searchError && results.length > 0 && processedDiscover.length === 0 && (
+                <div className="ml-msg">No models match your filters.</div>
+              )}
+
+              {processedDiscover.map((r) => (
                 <div key={r.repo} className="ml-hf-repo">
                   <button className="ml-hf-repo-head" onClick={() => handleExpand(r.repo)}>
                     <div className="ml-hf-repo-title">
@@ -400,9 +616,9 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
                           <button
                             className="ml-download-btn"
                             onClick={() => handlePull(f.pull_model)}
-                            disabled={isPulling}
+                            disabled={isPulling(f.pull_model)}
                           >
-                            {isPulling && pull?.model === f.pull_model ? 'Downloading…' : 'Download'}
+                            {isPulling(f.pull_model) ? 'Downloading…' : 'Download'}
                           </button>
                         </div>
                       ))}

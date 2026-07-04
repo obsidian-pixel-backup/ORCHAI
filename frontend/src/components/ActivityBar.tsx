@@ -81,15 +81,8 @@ export function ActivityBar({ activeTab, onTabChange, onSettingsClick, onModelLi
           {SKILLS_ICON}
           {hoveredId === 'skills' && <span className="tab-tooltip">Skills Library</span>}
         </button>
-      </div>
-
-      {/* Spacer to push settings to bottom */}
-      <div className="activity-bar-spacer" />
-
-      {/* Bottom: Model Library + Settings Gear */}
-      <div className="activity-bar-bottom">
         <button
-          className={`settings-icon-btn ${hoveredId === 'models' ? 'active' : ''}`}
+          className="activity-tab"
           onClick={onModelLibraryClick}
           onMouseEnter={() => setHoveredId('models')}
           onMouseLeave={() => setHoveredId(null)}
@@ -98,6 +91,13 @@ export function ActivityBar({ activeTab, onTabChange, onSettingsClick, onModelLi
           {MODELS_ICON}
           {hoveredId === 'models' && <span className="tab-tooltip">Model Library</span>}
         </button>
+      </div>
+
+      {/* Spacer to push settings to bottom */}
+      <div className="activity-bar-spacer" />
+
+      {/* Bottom: Settings Gear */}
+      <div className="activity-bar-bottom">
         <button
           className={`settings-icon-btn ${hoveredId === 'settings' ? 'active' : ''}`}
           onClick={onSettingsClick}

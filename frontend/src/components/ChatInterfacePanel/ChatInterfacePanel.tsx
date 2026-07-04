@@ -255,6 +255,16 @@ export function ChatInterfacePanel({
                 )
               );
             }
+          } else if (data.type === 'stream_split') {
+            const currentId = streamingMessageIdRef.current;
+            if (currentId && data.stats) {
+              setMessagesRef.current((prev) =>
+                prev.map((msg) =>
+                  msg.id === currentId ? { ...msg, stats: data.stats } : msg
+                )
+              );
+            }
+            streamingMessageIdRef.current = null;
           } else if (data.type === 'stream_end') {
             const currentId = streamingMessageIdRef.current;
             if (currentId && data.stats) {

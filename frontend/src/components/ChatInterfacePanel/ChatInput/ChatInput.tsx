@@ -463,6 +463,13 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration, sendOn
         </button>
         <div className="input-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {isStreaming && (
+            <div className="working-indicator" title="Model is working">
+              <span className="dot"></span>
+              <span className="dot"></span>
+              <span className="dot"></span>
+            </div>
+          )}
+          {isStreaming && (
             <button className="stop-btn" title="Stop generation" onClick={onStopGeneration} style={{ color: '#ef4444', background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="6" y="6" width="12" height="12" rx="2"></rect>

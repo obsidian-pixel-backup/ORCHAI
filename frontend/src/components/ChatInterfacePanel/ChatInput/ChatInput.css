@@ -293,3 +293,39 @@
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* Working Indicator */
+.working-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  height: 24px;
+}
+
+.working-indicator .dot {
+  width: 6px;
+  height: 6px;
+  background-color: var(--accent-color, #3b82f6);
+  border-radius: 50%;
+  animation: pulse-dot 1.4s infinite ease-in-out both;
+}
+
+.working-indicator .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.working-indicator .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes pulse-dot {
+  0%, 80%, 100% {
+    transform: scale(0);
+    opacity: 0.3;
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

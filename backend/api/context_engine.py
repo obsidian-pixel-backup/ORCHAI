@@ -530,7 +530,7 @@ class ContextOrchestrator:
         finally:
             self.is_consolidating = False
 
-    def build_orchestrated_prompt(self, latest_query: str) -> List[Dict[str, Any]]:
+    def build_orchestrated_prompt(self, latest_query: str, model_supports_tools: bool = True, tools: list = None) -> List[Dict[str, Any]]:
         """Construct the optimized model input with active window, system guidelines, world state, and recalled context."""
         from datetime import datetime
         active, archived = self.partition_context()
@@ -553,10 +553,12 @@ class ContextOrchestrator:
         except ImportError:
             pass
             
-        # Inject explicitly added tools dynamically if needed, or rely on Ollama's tool handling.
-        # Note: All tools are declared via the Ollama function definitions in chat.py.
-        # Do NOT redundantly list tool names here — it confuses the model into talking about
-        # tools instead of calling them.
+                # Inject explicitly added tools dynamically if needed, or rely on Ollama's tool handling.
+        if not model_supports_tools and tools:
+            import json
+            schema_str = json.dumps([t["function"] for t in tools], indent=2)
+            system_content += f"""\n\nAVAILABLE TOOLS:\nYou have access to the following tools:\n{schema_str}\n\nTo use a tool, you MUST output a raw JSON block containing the exact `name` and `arguments` specified above.\nYour response MUST contain the following block:\n```json\n{{\n  "name": "tool_name",\n  "arguments": {{\n    "arg_name": "arg_value"\n  }}\n}}\n```\nDo NOT wrap your tool call in any other syntax. We will parse the Markdown JSON block. Wait for the system to return the result before proceeding."""
+
 
         # Inject current system time
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
