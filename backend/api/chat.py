@@ -395,7 +395,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             "type": "function",
             "function": {
                 "name": "write_file",
-                "description": "Writes or overwrites a file with the provided content.",
+                "description": "Writes or overwrites a file with the provided content. To display this file as an Artifact in the user interface, you MUST provide the ArtifactMetadata object.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -406,6 +406,24 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         "content": {
                             "type": "string",
                             "description": "The content to write into the file."
+                        },
+                        "ArtifactMetadata": {
+                            "type": "object",
+                            "description": "Optional metadata to display this file as an Artifact in the UI.",
+                            "properties": {
+                                "Summary": {
+                                    "type": "string",
+                                    "description": "A summary of what this artifact is."
+                                },
+                                "UserFacing": {
+                                    "type": "boolean",
+                                    "description": "Whether this should be presented to the user."
+                                },
+                                "RequestFeedback": {
+                                    "type": "boolean",
+                                    "description": "Whether to request feedback."
+                                }
+                            }
                         }
                     },
                     "required": ["filepath", "content"]
