@@ -8,6 +8,7 @@ import { ContentDrawer } from './components/ContentDrawer';
 import { ModelSettingsPanel } from './components/ModelSettingsPanel/ModelSettingsPanel';
 import { MemoryHubPanel } from './components/MemoryHubPanel';
 import { SkillsManagementPanel } from './components/SkillsManagementPanel/SkillsManagementPanel';
+import { AuxiliaryPane } from './components/AuxiliaryPane/AuxiliaryPane';
 
 export interface Stats {
   tokens_per_second: number;
@@ -51,6 +52,7 @@ function App() {
   const [minP, setMinP] = useState<number>(0.05);
   const [maxTokens, setMaxTokens] = useState<number>(-1);
   const [isDrawerOpen, setIsDrawerOpen] = useState(true);
+  const [isAuxiliaryPaneOpen, setIsAuxiliaryPaneOpen] = useState(false);
   const [activeNavTab, setActiveNavTab] = useState<NavTab>('chats');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [isDarkTheme, setIsDarkTheme] = useState<boolean>(() => {
@@ -390,8 +392,17 @@ function App() {
           sendOnEnter={sendOnEnter}
           models={models}
           onModelChange={setSelectedModel}
+          isAuxiliaryPaneOpen={isAuxiliaryPaneOpen}
+          onToggleAuxiliaryPane={() => setIsAuxiliaryPaneOpen(prev => !prev)}
         />
       </main>
+
+      {/* 4. Auxiliary Pane (Right side) */}
+      <AuxiliaryPane 
+        isOpen={isAuxiliaryPaneOpen} 
+        onClose={() => setIsAuxiliaryPaneOpen(false)} 
+        activeMessages={activeMessages} 
+      />
 
       {/* Settings Modal Overlay (2-column layout) */}
       {showSettingsModal && (

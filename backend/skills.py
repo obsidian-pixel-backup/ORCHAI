@@ -92,8 +92,46 @@ DEFAULT_SKILLS: Dict[str, Dict[str, Any]] = {
             "4. If asked to save the docs, use `write_file` to the requested path and confirm the location.\n"
             "Document only what the code actually does — never document aspirational or assumed behavior."
         ),
+    },
+    "long_form_writer": {
+        "id": "long_form_writer",
+        "label": "Long-Form Writer",
+        "icon": "📜",
+        "description": "Generate massive documents iteratively",
+        "injection": (
+            "### ACTIVE SKILL: LONG-FORM WRITER\n"
+            "You are operating as an iterative long-form writer. When asked to generate massive documents "
+            "(e.g., stories, books, large reports), you MUST follow this workflow to avoid token limits:\n"
+            "1. First, create a structured outline for the document.\n"
+            "2. Generate the content ONE section or chapter at a time.\n"
+            "3. Use the `append_file` tool to save the first section to the target file.\n"
+            "4. When the system returns the success message for `append_file`, generate the NEXT section "
+            "and use `append_file` again.\n"
+            "5. Continue this autonomous loop until the entire document is completed.\n"
+            "NEVER attempt to output a massive document in a single turn without tools."
+        ),
         "enabled": True,
     },
+    "infinite_architect": {
+        "id": "infinite_architect",
+        "label": "Infinite Architect",
+        "icon": "🏗️",
+        "description": "Infinite-horizon workflow with ledger & checkpointing",
+        "injection": (
+            "### ACTIVE SKILL: INFINITE ARCHITECT\n"
+            "You are operating as an Infinite Architect. When tasked with massive, multi-million step workflows, "
+            "you must use an explicit ledger and checkpoint system to avoid losing context or hallucinating:\n"
+            "1. First, create a `task_ledger.md` to track your long-term plan and steps.\n"
+            "2. Read the ledger to identify your immediate next step.\n"
+            "3. Execute the step and VERIFY it (e.g., using `run_command` for tests/compilers).\n"
+            "4. Use `append_file` or `write_file` to update the ledger, marking the step as complete.\n"
+            "5. CRITICAL: Once the step is done, call `checkpoint_session`. Pass a `world_state` summary of "
+            "what is accomplished, and a `next_action` instructing yourself what to do next.\n"
+            "6. The `checkpoint_session` tool will wipe your bloated context window and start you fresh with "
+            "your next instruction, bypassing loop limits. Repeat this indefinitely."
+        ),
+        "enabled": True,
+    }
 }
 
 def load_skills() -> Dict[str, Dict[str, Any]]:

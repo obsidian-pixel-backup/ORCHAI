@@ -32,6 +32,18 @@ def write_file(filepath: str, content: str) -> str:
     except Exception as e:
         return f"Error writing to file '{filepath}': {str(e)}"
 
+def append_file(filepath: str, content: str) -> str:
+    """Appends content to a file, creating it if it doesn't exist."""
+    try:
+        # Create directories if they don't exist
+        os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+        
+        with open(filepath, 'a', encoding='utf-8') as f:
+            f.write(content)
+        return f"Successfully appended to '{filepath}'."
+    except Exception as e:
+        return f"Error appending to file '{filepath}': {str(e)}"
+
 def list_directory(path: str) -> str:
     """Lists all files and folders in a given directory."""
     try:

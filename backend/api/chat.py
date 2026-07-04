@@ -415,6 +415,48 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         {
             "type": "function",
             "function": {
+                "name": "append_file",
+                "description": "Appends content to the end of an existing file, creating it if it doesn't exist.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "filepath": {
+                            "type": "string",
+                            "description": "The path to the file to append to."
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "The content to append."
+                        }
+                    },
+                    "required": ["filepath", "content"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "checkpoint_session",
+                "description": "Flushes the active context window to bypass token limits during massive workflows. This archives all history up to this point and re-prompts you with next_action.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "world_state": {
+                            "type": "string",
+                            "description": "High-level summary of what has been accomplished so far to update the World State."
+                        },
+                        "next_action": {
+                            "type": "string",
+                            "description": "The exact instruction you want to feed to yourself for the very next step."
+                        }
+                    },
+                    "required": ["world_state", "next_action"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "list_directory",
                 "description": "Lists all files and folders in a given directory.",
                 "parameters": {
@@ -754,7 +796,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     except Exception as e:
                         return f"Error executing {func_name}: {str(e)}"
 
-                elif func_name in ["read_file", "write_file", "list_directory"]:
+                elif func_name == "checkpoint_session":
                     await manager.send_personal_message(
                         json.dumps({
                             "type": "tool_execution",
@@ -764,12 +806,26 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         }),
                         websocket
                     )
-                    from system_tools import read_file, write_file, list_directory
+                    return "Checkpoint initiated."
+
+                elif func_name in ["read_file", "write_file", "append_file", "list_directory"]:
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_execution",
+                            "id": tool_msg_id,
+                            "tool": func_name,
+                            "args": func_args
+                        }),
+                        websocket
+                    )
+                    from system_tools import read_file, write_file, append_file, list_directory
                     try:
                         if func_name == "read_file":
                             return await asyncio.to_thread(read_file, func_args.get("filepath", ""))
                         elif func_name == "write_file":
                             return await asyncio.to_thread(write_file, func_args.get("filepath", ""), func_args.get("content", ""))
+                        elif func_name == "append_file":
+                            return await asyncio.to_thread(append_file, func_args.get("filepath", ""), func_args.get("content", ""))
                         elif func_name == "list_directory":
                             return await asyncio.to_thread(list_directory, func_args.get("path", ""))
                     except Exception as e:
@@ -784,8 +840,31 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             total_time_spent_generating = 0
             overall_prompt_eval_count = 0
             empty_response_count = 0
+            consecutive_tool_iterations = 0
+            consecutive_scaffold_iterations = 0
 
             while True:
+                if consecutive_tool_iterations > 15 or consecutive_scaffold_iterations > 5:
+                    error_msg = "\n\n> [!CRITICAL]\n> **System Error:** The model exceeded the maximum allowed autonomous iterations (Psycho Loop Guard triggered). Generation halted.\n"
+                    orch.add_message(role="assistant", content=error_msg)
+                    orchestrated_messages.append({"role": "assistant", "content": error_msg})
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "stream",
+                            "id": msg_id,
+                            "role": "model",
+                            "content": error_msg,
+                            "done": False,
+                            "stats": {
+                                "tokens": overall_token_count,
+                                "tokens_per_second": 0,
+                                "elapsed": round(total_time_spent_generating, 2),
+                            }
+                        }),
+                        websocket,
+                    )
+                    break
+
                 # 4. Formulate the official Ollama payload
                 ollama_payload = {
                     "model": model,
@@ -1033,6 +1112,24 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         }
                         io_message = f"\n\n```tool_execution\n{json.dumps(tool_data)}\n```\n\n"
 
+                        if func_name == "checkpoint_session":
+                            new_world_state = func_args.get("world_state", "")
+                            next_action = func_args.get("next_action", "Continue.")
+                            if new_world_state:
+                                orch.world_state = new_world_state
+                            
+                            orch.consolidated_up_to = len(orch._messages) - 1
+                            orch._save_session_state()
+                            
+                            sys_msg = orchestrated_messages[0]
+                            orchestrated_messages = [
+                                sys_msg, 
+                                {"role": "user", "content": f"CHECKPOINT SUCCESSFUL. CONTEXT FLUSHED.\n\nNEXT ACTION:\n{next_action}"}
+                            ]
+                            
+                            consecutive_tool_iterations = 0
+                            break
+
                     # Send the tool execution result to the frontend stream
                     await manager.send_personal_message(
                         json.dumps({
@@ -1058,6 +1155,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     if full_thinking:
                         chronological_thinking_segments.append(full_thinking)
                     
+                    consecutive_tool_iterations += 1
                     # Continue the while loop to send the tool results back to Ollama
                     continue
 
@@ -1128,6 +1226,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     if full_thinking:
                         chronological_thinking_segments.append(full_thinking)
                     
+                    consecutive_scaffold_iterations += 1
                     # Trigger Stage 2 Rollout
                     continue
 
