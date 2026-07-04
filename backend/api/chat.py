@@ -304,7 +304,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         # Factor in expected generation length (buffer + max tokens if provided)
         num_predict = merged_options.get("num_predict", 4096)
         if num_predict < 0:
-            num_predict = 4096
+            num_predict = 32768
         target_ctx = total_prompt_tokens + num_predict + 1024 # Add 1k token safety buffer
         
         # Round up to nearest power of 2 for memory efficiency, with min 4096 and max 131072
@@ -615,7 +615,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         scrape_page = None
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(300.0)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=None, write=None, pool=None)) as client:
             chronological_thinking_segments = []
 
             async def _execute_tool(func_name: str, func_args: dict) -> str:
