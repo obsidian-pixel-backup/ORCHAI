@@ -6,6 +6,7 @@ import sys
 import asyncio
 from api.chat import router as chat_router, manager
 from api.speech import router as speech_router, set_whisper_model
+from api.skills_router import router as skills_router
 
 # Import our sensory modules
 try:
@@ -165,6 +166,7 @@ app.add_middleware(
 
 app.include_router(chat_router, prefix="/api/chat")
 app.include_router(speech_router, prefix="/api/speech")
+app.include_router(skills_router, prefix="/api/skills")
 
 @app.get("/")
 def root():

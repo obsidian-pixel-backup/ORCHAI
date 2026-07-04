@@ -6,18 +6,16 @@ chat input, a `[Skill: <name>]` marker is embedded into the outgoing message. Th
 chat router detects these markers, looks the skill up here, and injects the skill's
 methodology guidance into the system prompt for that turn.
 
-Unlike a static persona, each skill explicitly directs the model to use ORCHAI's
-real backend tools (read_file, list_directory, run_command, search_web, scrape_page,
-delegate_to_subagent) with a structured workflow, making the skills genuinely
-functional rather than cosmetic.
+Skills are persisted to a local JSON file to allow user customization.
 """
 
 from typing import Dict, List, Any
+import json
+import os
 
-# ── Skill Definitions ──
-# Keyed by a stable skill id. `label` is what the frontend shows AND what gets
-# embedded in the `[Skill: <label>]` marker, so detection matches on label.
-SKILLS: Dict[str, Dict[str, Any]] = {
+SKILLS_FILE = os.path.join(os.path.dirname(__file__), "orchai_skills.json")
+
+DEFAULT_SKILLS: Dict[str, Dict[str, Any]] = {
     "code_review": {
         "id": "code_review",
         "label": "Code review",
@@ -37,6 +35,7 @@ SKILLS: Dict[str, Dict[str, Any]] = {
             "5. Order findings by severity (critical first). If you find no issues in a category, say so explicitly.\n"
             "Be precise and evidence-based. Do not invent issues to pad the review."
         ),
+        "enabled": True,
     },
     "security_audit": {
         "id": "security_audit",
@@ -56,6 +55,7 @@ SKILLS: Dict[str, Dict[str, Any]] = {
             "5. End with a short prioritized remediation checklist.\n"
             "Only report issues you can substantiate from the actual code."
         ),
+        "enabled": True,
     },
     "deep_research": {
         "id": "deep_research",
@@ -75,6 +75,7 @@ SKILLS: Dict[str, Dict[str, Any]] = {
             "(title + URL) for every non-trivial claim. Do not fabricate citations.\n"
             "Prioritize accuracy and recency over speed."
         ),
+        "enabled": True,
     },
     "doc_writer": {
         "id": "doc_writer",
@@ -91,22 +92,93 @@ SKILLS: Dict[str, Dict[str, Any]] = {
             "4. If asked to save the docs, use `write_file` to the requested path and confirm the location.\n"
             "Document only what the code actually does — never document aspirational or assumed behavior."
         ),
+        "enabled": True,
     },
 }
 
+def load_skills() -> Dict[str, Dict[str, Any]]:
+    """Load skills from the JSON file, or create it with defaults if it doesn't exist."""
+    if not os.path.exists(SKILLS_FILE):
+        _save_skills(DEFAULT_SKILLS)
+        return DEFAULT_SKILLS
+    
+    try:
+        with open(SKILLS_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            # Ensure all skills have an 'enabled' field for backward compatibility
+            for s in data.values():
+                if "enabled" not in s:
+                    s["enabled"] = True
+            return data
+    except Exception as e:
+        print(f"Failed to load skills: {e}")
+        return DEFAULT_SKILLS
 
-def get_public_skills() -> List[Dict[str, str]]:
+def _save_skills(skills: Dict[str, Dict[str, Any]]):
+    try:
+        with open(SKILLS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(skills, f, indent=4)
+    except Exception as e:
+        print(f"Failed to save skills: {e}")
+
+SKILLS = load_skills()
+
+def get_public_skills() -> List[Dict[str, Any]]:
     """Return the skill catalog (without injections) for the frontend to render."""
+    # The frontend needs to see enabled status now
     return [
         {
             "id": s["id"],
             "label": s["label"],
-            "icon": s["icon"],
+            "icon": s.get("icon", "✨"),
             "description": s["description"],
+            "enabled": s.get("enabled", True),
         }
         for s in SKILLS.values()
     ]
 
+def get_all_skills_full() -> List[Dict[str, Any]]:
+    """Return all skills including injection text (for the management UI)."""
+    return list(SKILLS.values())
+
+def create_skill(skill: Dict[str, Any]) -> bool:
+    if skill["id"] in SKILLS:
+        return False
+    
+    SKILLS[skill["id"]] = {
+        "id": skill["id"],
+        "label": skill.get("label", skill["id"]),
+        "icon": skill.get("icon", "✨"),
+        "description": skill.get("description", ""),
+        "injection": skill.get("injection", ""),
+        "enabled": skill.get("enabled", True),
+    }
+    _save_skills(SKILLS)
+    return True
+
+def update_skill(skill_id: str, updates: Dict[str, Any]) -> bool:
+    if skill_id not in SKILLS:
+        return False
+        
+    s = SKILLS[skill_id]
+    if "label" in updates: s["label"] = updates["label"]
+    if "icon" in updates: s["icon"] = updates["icon"]
+    if "description" in updates: s["description"] = updates["description"]
+    if "injection" in updates: s["injection"] = updates["injection"]
+    if "enabled" in updates: s["enabled"] = updates["enabled"]
+    
+    _save_skills(SKILLS)
+    return True
+
+def delete_skill(skill_id: str) -> bool:
+    if skill_id in SKILLS:
+        del SKILLS[skill_id]
+        _save_skills(SKILLS)
+        return True
+    return False
+
+def get_enabled_skills() -> Dict[str, Dict[str, Any]]:
+    return {k: v for k, v in SKILLS.items() if v.get("enabled", True)}
 
 def detect_active_skills(text: str) -> List[str]:
     """Find skill ids whose `[Skill: <label>]` marker appears in the given text."""
@@ -119,7 +191,6 @@ def detect_active_skills(text: str) -> List[str]:
         if marker in lowered:
             active.append(skill["id"])
     return active
-
 
 def build_skill_injection(skill_ids: List[str]) -> str:
     """Concatenate the system-prompt injections for the active skills."""

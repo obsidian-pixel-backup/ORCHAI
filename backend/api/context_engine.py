@@ -140,13 +140,22 @@ class ContextOrchestrator:
             "You are ORCHAI, a highly specialized agent orchestration wrapper. "
             "Help the user efficiently solve complex development and computing problems. "
             "Keep answers extremely precise, professional, and well-structured.\n\n"
-            "TOOLS AND SKILLS:\n"
-            "You have access to specialized tools and skills. You MUST prioritize tools based on the situation:\n"
+            "TOOL-CALL CONTRACT (MANDATORY):\n"
+            "You have access to real tools that execute on the user's system. "
+            "When you need information or want to perform an action:\n"
+            "1. CALL the appropriate tool function. Do NOT guess, fabricate, or role-play tool outputs.\n"
+            "2. WAIT for the system to return the real result before continuing.\n"
+            "3. Only THEN incorporate the actual result into your response.\n"
+            "If you describe a tool's output without having called it, you are hallucinating. "
+            "NEVER generate fake tool results, sample outputs, or placeholder data. "
+            "If a tool call fails, report the real error — do not invent a successful result.\n\n"
+            "TOOL PRIORITIZATION:\n"
+            "You MUST prioritize tools based on the situation:\n"
             "- Internet Data: For fetching real-time data, weather, or web info, ALWAYS prioritize `search_web` and `scrape_page` over using the terminal.\n"
             "- File Navigation: For exploring the filesystem, reading, or editing, ALWAYS prioritize `list_directory`, `read_file`, and `write_file`.\n"
             "- Coding & Execution: For running scripts, compiling code, or system-level tasks, use `run_command` (terminal).\n"
             "Only use `delegate_to_subagent` for complex, multi-step tasks requiring deep research. "
-            "When faced with a query requiring real-time data, current events, time/date, missing knowledge, system information, or file manipulation, you MUST think in terms of skills and tool usage. "
+            "When faced with a query requiring real-time data, current events, time/date, missing knowledge, system information, or file manipulation, you MUST think in terms of tool usage. "
             "If the user asks for the current time, date, or day, or system information, you MUST execute the get_system_info tool. Do not claim you cannot access the time or system specs.\n"
             "Use the provided tools appropriately instead of guessing. For example, use `list_directory` before attempting to read a file to ensure it exists.\n"
             "When using `run_command`, remember the host OS is Windows (PowerShell). DO NOT use Unix utilities like `curl`, `grep`, `cat`, or `ls`. Use PowerShell equivalents (e.g., `Invoke-RestMethod` instead of `curl`).\n"
@@ -529,6 +538,26 @@ class ContextOrchestrator:
         # 1. Start with system prompt (STATIC PREFIX)
         system_content = self.base_system_prompt + "\n\nCRITICAL: You must always prioritize the user's immediate request over any background memory or sensory context."
         
+        # Inject available skills explicitly
+        try:
+            import sys
+            import os
+            backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            if backend_dir not in sys.path:
+                sys.path.append(backend_dir)
+            from skills import get_enabled_skills
+            enabled_skills = get_enabled_skills()
+            if enabled_skills:
+                skill_list = "\n".join([f"- {s['label']}: {s['description']}" for s in enabled_skills.values()])
+                system_content += f"\n\nAVAILABLE SKILLS:\nThe user can activate the following specialized skills by including a [Skill: <label>] marker in their message. When a skill is active, its methodology will be injected and you must follow it:\n{skill_list}\n"
+        except ImportError:
+            pass
+            
+        # Inject explicitly added tools dynamically if needed, or rely on Ollama's tool handling.
+        # Note: All tools are declared via the Ollama function definitions in chat.py.
+        # Do NOT redundantly list tool names here — it confuses the model into talking about
+        # tools instead of calling them.
+
         # Inject current system time
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         system_content += f"\n\nCURRENT SYSTEM TIME: {current_time}\n"

@@ -51,10 +51,10 @@ function parseChronologicalBlocks(content: string) {
       let thinkingContent = remaining.slice(startIdx + 7, endIdx);
       let duration: string | undefined;
       
-      const durationMatch = thinkingContent.match(/<!-- duration: ([\d.]+)s -->/);
-      if (durationMatch) {
-        duration = durationMatch[1];
-        thinkingContent = thinkingContent.replace(/<!-- duration: [\d.]+s -->/, '').trim();
+      const durationMatches = [...thinkingContent.matchAll(/<!-- duration: ([\d.]+)s -->/g)];
+      if (durationMatches.length > 0) {
+        duration = durationMatches[durationMatches.length - 1][1];
+        thinkingContent = thinkingContent.replace(/<!-- duration: [\d.]+s -->/g, '').trim();
       }
       
       blocks.push({ type: 'thinking', content: thinkingContent, isThinkingActive: false, duration });

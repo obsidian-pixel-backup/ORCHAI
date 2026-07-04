@@ -445,8 +445,116 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     "required": ["command"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "run_python_script",
+                "description": "Executes a Python script securely. Requires user approval.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "script_path": {
+                            "type": "string",
+                            "description": "The path to the Python script to execute."
+                        },
+                        "args": {
+                            "type": "string",
+                            "description": "Optional arguments to pass to the script."
+                        }
+                    },
+                    "required": ["script_path"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "send_http_request",
+                "description": "Sends an HTTP request.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "method": {
+                            "type": "string",
+                            "description": "The HTTP method (GET, POST, PUT, DELETE, etc.)."
+                        },
+                        "url": {
+                            "type": "string",
+                            "description": "The target URL."
+                        },
+                        "headers": {
+                            "type": "string",
+                            "description": "Optional JSON string of headers."
+                        },
+                        "body": {
+                            "type": "string",
+                            "description": "Optional request body string."
+                        }
+                    },
+                    "required": ["method", "url"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "manage_git_repo",
+                "description": "Executes safe Git operations. Requires user approval.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "repo_path": {
+                            "type": "string",
+                            "description": "The path to the Git repository."
+                        },
+                        "action": {
+                            "type": "string",
+                            "description": "The action to perform: status, add, commit, push, pull, checkout, clone."
+                        },
+                        "commit_message": {
+                            "type": "string",
+                            "description": "Required for commit action."
+                        },
+                        "branch": {
+                            "type": "string",
+                            "description": "Required for checkout action."
+                        },
+                        "url": {
+                            "type": "string",
+                            "description": "Required for clone action."
+                        }
+                    },
+                    "required": ["repo_path", "action"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "query_database",
+                "description": "Executes a SQL query against an SQLite database. Requires user approval.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "db_path": {
+                            "type": "string",
+                            "description": "The path to the SQLite database file."
+                        },
+                        "query": {
+                            "type": "string",
+                            "description": "The SQL query to execute."
+                        }
+                    },
+                    "required": ["db_path", "query"]
+                }
+            }
         }
     ]
+
+    # Note: Skills are activated via [Skill: <label>] markers in the user message,
+    # which are detected and injected into the system prompt (see detect_active_skills).
+    # There is no apply_skill tool — skills are behavioral, not data.
 
     msg_id = f"msg-{id(payload)}"
 
@@ -469,6 +577,8 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             chronological_thinking_segments = []
 
             async def _execute_tool(func_name: str, func_args: dict) -> str:
+                import uuid
+                tool_msg_id = f"tool-{uuid.uuid4().hex[:8]}"
                 if func_name == "delegate_to_subagent":
                     role = func_args.get("role", "")
                     task = func_args.get("task", "")
@@ -476,7 +586,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     await manager.send_personal_message(
                         json.dumps({
                             "type": "tool_execution",
-                            "id": msg_id,
+                            "id": tool_msg_id,
                             "tool": func_name,
                             "args": {"role": role, "task": task}
                         }),
@@ -492,7 +602,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     await manager.send_personal_message(
                         json.dumps({
                             "type": "tool_execution",
-                            "id": msg_id,
+                            "id": tool_msg_id,
                             "tool": func_name,
                             "args": {"query": query}
                         }),
@@ -508,7 +618,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     await manager.send_personal_message(
                         json.dumps({
                             "type": "tool_execution",
-                            "id": msg_id,
+                            "id": tool_msg_id,
                             "tool": func_name,
                             "args": {"url": url}
                         }),
@@ -544,21 +654,21 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     
                 elif func_name == "run_command":
                     command = func_args.get("command", "")
-                    tool_approval_events[msg_id] = asyncio.Event()
+                    tool_approval_events[tool_msg_id] = asyncio.Event()
                     await manager.send_personal_message(
                         json.dumps({
                             "type": "tool_approval_request",
-                            "id": msg_id,
+                            "id": tool_msg_id,
                             "tool": func_name,
                             "command": command
                         }),
                         websocket
                     )
-                    await tool_approval_events[msg_id].wait()
-                    approved = tool_approval_results.get(msg_id, False)
-                    del tool_approval_events[msg_id]
-                    if msg_id in tool_approval_results:
-                        del tool_approval_results[msg_id]
+                    await tool_approval_events[tool_msg_id].wait()
+                    approved = tool_approval_results.get(tool_msg_id, False)
+                    del tool_approval_events[tool_msg_id]
+                    if tool_msg_id in tool_approval_results:
+                        del tool_approval_results[tool_msg_id]
                         
                     if not approved:
                         return f"Error: User denied permission to run command: {command}"
@@ -566,7 +676,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         await manager.send_personal_message(
                             json.dumps({
                                 "type": "tool_execution",
-                                "id": msg_id,
+                                "id": tool_msg_id,
                                 "tool": func_name,
                                 "args": {"command": command}
                             }),
@@ -578,11 +688,77 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         except Exception as e:
                             return f"Error executing {func_name}: {str(e)}"
                             
+                elif func_name in ["run_python_script", "manage_git_repo", "query_database"]:
+                    tool_approval_events[tool_msg_id] = asyncio.Event()
+                    
+                    if func_name == "run_python_script":
+                        cmd_str = f"python {func_args.get('script_path')} {func_args.get('args', '')}"
+                    elif func_name == "manage_git_repo":
+                        cmd_str = f"git {func_args.get('action')} on {func_args.get('repo_path')}"
+                    elif func_name == "query_database":
+                        cmd_str = f"SQL: {func_args.get('query')} on {func_args.get('db_path')}"
+                    else:
+                        cmd_str = str(func_args)
+
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_approval_request",
+                            "id": tool_msg_id,
+                            "tool": func_name,
+                            "command": cmd_str
+                        }),
+                        websocket
+                    )
+                    await tool_approval_events[tool_msg_id].wait()
+                    approved = tool_approval_results.get(tool_msg_id, False)
+                    del tool_approval_events[tool_msg_id]
+                    if tool_msg_id in tool_approval_results:
+                        del tool_approval_results[tool_msg_id]
+                        
+                    if not approved:
+                        return f"Error: User denied permission to execute {func_name}: {cmd_str}"
+                    else:
+                        await manager.send_personal_message(
+                            json.dumps({
+                                "type": "tool_execution",
+                                "id": tool_msg_id,
+                                "tool": func_name,
+                                "args": func_args
+                            }),
+                            websocket
+                        )
+                        from system_tools import run_python_script, manage_git_repo, query_database
+                        try:
+                            if func_name == "run_python_script":
+                                return await asyncio.to_thread(run_python_script, func_args.get("script_path", ""), func_args.get("args", ""))
+                            elif func_name == "manage_git_repo":
+                                return await asyncio.to_thread(manage_git_repo, func_args.get("repo_path", ""), func_args.get("action", ""), func_args.get("commit_message", ""), func_args.get("branch", ""), func_args.get("url", ""))
+                            elif func_name == "query_database":
+                                return await asyncio.to_thread(query_database, func_args.get("db_path", ""), func_args.get("query", ""))
+                        except Exception as e:
+                            return f"Error executing {func_name}: {str(e)}"
+                            
+                elif func_name == "send_http_request":
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_execution",
+                            "id": tool_msg_id,
+                            "tool": func_name,
+                            "args": func_args
+                        }),
+                        websocket
+                    )
+                    from system_tools import send_http_request
+                    try:
+                        return await asyncio.to_thread(send_http_request, func_args.get("method", "GET"), func_args.get("url", ""), func_args.get("headers", ""), func_args.get("body", ""))
+                    except Exception as e:
+                        return f"Error executing {func_name}: {str(e)}"
+
                 elif func_name in ["read_file", "write_file", "list_directory"]:
                     await manager.send_personal_message(
                         json.dumps({
                             "type": "tool_execution",
-                            "id": msg_id,
+                            "id": tool_msg_id,
                             "tool": func_name,
                             "args": func_args
                         }),
@@ -607,6 +783,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             user_input_tokens = estimate_tokens(last_user_query)
             total_time_spent_generating = 0
             overall_prompt_eval_count = 0
+            empty_response_count = 0
 
             while True:
                 # 4. Formulate the official Ollama payload
@@ -956,6 +1133,43 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
                 # No tool calls, finish normally
                 else:
+                    if overall_content_token_count == 0 and empty_response_count < 2:
+                        empty_response_count += 1
+                        orch.add_message(role="assistant", content=full_content)
+                        prompt_msg = "\n\n> [!WARNING]\n> **System:** You ended your turn without outputting any text to the user. Please provide a summary of your actions or a final response.\n"
+                        orch.add_message(role="user", content=prompt_msg)
+                        orchestrated_messages.append({
+                            "role": "assistant",
+                            "content": full_content
+                        })
+                        orchestrated_messages.append({
+                            "role": "user",
+                            "content": prompt_msg
+                        })
+                        if full_thinking:
+                            chronological_thinking_segments.append(full_thinking)
+                        
+                        await manager.send_personal_message(
+                            json.dumps({
+                                "type": "stream",
+                                "id": msg_id,
+                                "role": "model",
+                                "content": prompt_msg,
+                                "done": False,
+                                "stats": {
+                                    "tokens": overall_token_count,
+                                    "content_tokens": overall_content_token_count,
+                                    "thinking_tokens": overall_thinking_token_count,
+                                    "user_input_tokens": user_input_tokens,
+                                    "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
+                                    "tokens_per_second": round(final_tps, 1) if 'final_tps' in locals() else 0,
+                                    "elapsed": round(total_time_spent_generating, 2),
+                                }
+                            }),
+                            websocket,
+                        )
+                        continue
+
                     orch.add_message(role="assistant", content=full_content)
 
                     # 5. Trigger asynchronous memory consolidation in the background

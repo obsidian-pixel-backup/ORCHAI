@@ -65,7 +65,7 @@ export function ContentDrawer({ isOpen, onClose, activeTab, children }: ContentD
       style={isOpen ? { width: `${width}px` } : undefined}
       role="complementary"
       aria-hidden={!isOpen}
-      aria-label={`${activeTab === 'chats' ? 'Chat Management' : 'Memory Hub'} panel`}
+      aria-label={`${activeTab === 'chats' ? 'Chat Management' : activeTab === 'skills' ? 'Skills Library' : 'Memory Hub'} panel`}
     >
       {/* Header */}
       <div className="drawer-header">
@@ -81,7 +81,7 @@ export function ContentDrawer({ isOpen, onClose, activeTab, children }: ContentD
           </svg>
         </button>
         <h2 className="drawer-title">
-          {activeTab === 'chats' ? 'Chats' : 'Memory Hub'}
+          {activeTab === 'chats' ? 'Chats' : activeTab === 'skills' ? 'Skills Library' : 'Memory Hub'}
         </h2>
       </div>
 

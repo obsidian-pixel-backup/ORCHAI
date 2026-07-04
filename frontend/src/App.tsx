@@ -7,6 +7,7 @@ import { ActivityBar } from './components/ActivityBar';
 import { ContentDrawer } from './components/ContentDrawer';
 import { ModelSettingsPanel } from './components/ModelSettingsPanel/ModelSettingsPanel';
 import { MemoryHubPanel } from './components/MemoryHubPanel';
+import { SkillsManagementPanel } from './components/SkillsManagementPanel/SkillsManagementPanel';
 
 export interface Stats {
   tokens_per_second: number;
@@ -40,7 +41,7 @@ const INITIAL_CHAT: ChatSession = {
   }
 };
 
-type NavTab = 'chats' | 'memory';
+type NavTab = 'chats' | 'memory' | 'skills';
 
 function App() {
   const [selectedModel, setSelectedModel] = useState<string>('');
@@ -347,6 +348,10 @@ function App() {
     />
   );
 
+  const skillsManagementPanel = (
+    <SkillsManagementPanel />
+  );
+
   return (
     <div className="app-container">
       {/* 1. Persistent Icon-Only Activity Bar (~56px) */}
@@ -362,7 +367,7 @@ function App() {
         onClose={() => setIsDrawerOpen(false)}
         activeTab={activeNavTab}
       >
-        {activeNavTab === 'chats' ? chatManagementPanel : memoryHubPanel}
+        {activeNavTab === 'chats' ? chatManagementPanel : activeNavTab === 'memory' ? memoryHubPanel : skillsManagementPanel}
       </ContentDrawer>
 
       {/* 3. Chat Interface (fills remaining space) */}

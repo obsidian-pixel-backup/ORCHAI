@@ -1,5 +1,10 @@
 import os
 import subprocess
+import json
+import sqlite3
+import urllib.request
+import urllib.error
+import shlex
 from typing import Dict, Any, Optional
 
 def read_file(filepath: str) -> str:
@@ -87,3 +92,169 @@ def run_command(command: str) -> str:
         return "Error: Command timed out after 60 seconds."
     except Exception as e:
         return f"Error executing command: {str(e)}"
+
+def run_python_script(script_path: str, args: str = "") -> str:
+    """
+    Executes a Python script securely.
+    """
+    try:
+        if not os.path.exists(script_path):
+            return f"Error: Script '{script_path}' does not exist."
+            
+        cmd = ["python", script_path]
+        if args:
+            # Simple split by space, handling quotes is better with shlex
+            try:
+                parsed_args = shlex.split(args)
+                cmd.extend(parsed_args)
+            except Exception:
+                cmd.extend(args.split())
+                
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        stdout, stderr = process.communicate(timeout=120)
+        
+        result = []
+        if stdout:
+            result.append("--- STDOUT ---")
+            result.append(stdout.strip())
+        if stderr:
+            result.append("--- STDERR ---")
+            result.append(stderr.strip())
+            
+        if not result:
+            return f"Script executed successfully with no output (Exit Code: {process.returncode})."
+            
+        result.append(f"--- Exit Code: {process.returncode} ---")
+        return "\n".join(result)
+        
+    except subprocess.TimeoutExpired:
+        process.kill()
+        return "Error: Script timed out after 120 seconds."
+    except Exception as e:
+        return f"Error executing script '{script_path}': {str(e)}"
+
+def send_http_request(method: str, url: str, headers: str = "", body: str = "") -> str:
+    """
+    Sends an HTTP request.
+    """
+    try:
+        req_headers = {}
+        if headers:
+            try:
+                req_headers = json.loads(headers)
+            except json.JSONDecodeError:
+                return "Error: headers must be a valid JSON string."
+                
+        req_body = body.encode('utf-8') if body else None
+        
+        req = urllib.request.Request(url, data=req_body, headers=req_headers, method=method.upper())
+        try:
+            with urllib.request.urlopen(req, timeout=30) as response:
+                status = response.getcode()
+                response_body = response.read().decode('utf-8')
+                return f"Status: {status}\n\n{response_body}"
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8')
+            return f"HTTP Error {e.code}: {e.reason}\n\n{error_body}"
+        except urllib.error.URLError as e:
+            return f"URL Error: {e.reason}"
+    except Exception as e:
+        return f"Error sending HTTP request: {str(e)}"
+
+def manage_git_repo(repo_path: str, action: str, commit_message: str = "", branch: str = "", url: str = "") -> str:
+    """
+    Executes safe Git operations.
+    """
+    try:
+        if action.lower() != "clone" and not os.path.exists(repo_path):
+            return f"Error: Repository path '{repo_path}' does not exist."
+            
+        action = action.lower()
+        cmd = ["git"]
+        
+        if action == "status":
+            cmd.extend(["status"])
+        elif action == "add":
+            cmd.extend(["add", "."])
+        elif action == "commit":
+            if not commit_message:
+                return "Error: commit_message is required for commit action."
+            cmd.extend(["commit", "-m", commit_message])
+        elif action == "push":
+            cmd.extend(["push"])
+        elif action == "pull":
+            cmd.extend(["pull"])
+        elif action == "checkout":
+            if not branch:
+                return "Error: branch is required for checkout action."
+            cmd.extend(["checkout", branch])
+        elif action == "clone":
+            if not url:
+                return "Error: url is required for clone action."
+            cmd.extend(["clone", url, repo_path])
+            # For clone, we run outside the repo path (it creates it)
+            repo_path = os.path.dirname(os.path.abspath(repo_path))
+        else:
+            return f"Error: Unsupported git action '{action}'."
+            
+        process = subprocess.Popen(
+            cmd,
+            cwd=repo_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        stdout, stderr = process.communicate(timeout=60)
+        
+        result = []
+        if stdout:
+            result.append(stdout.strip())
+        if stderr:
+            result.append(stderr.strip())
+            
+        if not result:
+            return f"Git {action} executed successfully."
+            
+        return "\n".join(result)
+        
+    except subprocess.TimeoutExpired:
+        process.kill()
+        return "Error: Git command timed out."
+    except Exception as e:
+        return f"Error executing git command: {str(e)}"
+
+def query_database(db_path: str, query: str) -> str:
+    """
+    Executes a SQL query against an SQLite database.
+    """
+    try:
+        if not os.path.exists(db_path) and not query.lower().startswith("create"):
+            return f"Error: Database '{db_path}' does not exist."
+            
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute(query)
+        if query.lower().strip().startswith("select"):
+            rows = cursor.fetchall()
+            columns = [description[0] for description in cursor.description] if cursor.description else []
+            
+            if not rows:
+                result = "No rows returned."
+            else:
+                result = f"Columns: {', '.join(columns)}\n"
+                for row in rows:
+                    result += str(row) + "\n"
+        else:
+            conn.commit()
+            result = f"Query executed successfully. {cursor.rowcount} row(s) affected."
+            
+        conn.close()
+        return result
+    except Exception as e:
+        return f"Error executing database query: {str(e)}"

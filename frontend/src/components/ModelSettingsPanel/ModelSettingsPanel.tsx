@@ -37,7 +37,9 @@ export function ModelSettingsPanel({
   onMinPChange,
   maxTokens,
   onMaxTokensChange,
+  // @ts-ignore
   stats,
+  // @ts-ignore
   chatId,
   models,
   loadingModels
