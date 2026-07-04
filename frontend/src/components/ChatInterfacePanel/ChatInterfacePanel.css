@@ -432,12 +432,35 @@
 .queued-messages-header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   font-size: 0.75rem;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding-left: 2px;
+  padding-right: 4px;
+}
+
+.queued-messages-header.collapsible {
+  cursor: pointer;
+  user-select: none;
+}
+
+.queued-messages-header.collapsible:hover {
+  color: var(--text-primary);
+}
+
+.queued-messages-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+}
+
+.queued-messages-header.collapsible:hover .queued-messages-toggle {
+  color: var(--text-primary);
 }
 
 .queued-messages-list {

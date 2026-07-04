@@ -76,6 +76,14 @@ class ConfigUpdate(BaseModel):
     active_window_limit: int
     dynamic_consolidation: bool
     semantic_recall: bool
+    dynamic_persona: Optional[bool] = None
+
+
+class PersonaUpdate(BaseModel):
+    session_id: str
+    persona_state: str
+    dynamic_persona: Optional[bool] = None
+
 
 
 class SearchQuery(BaseModel):
@@ -117,11 +125,13 @@ async def get_world_state(session_id: str = "default"):
     orch = get_orchestrator(session_id)
     return {
         "world_state": orch.world_state,
+        "persona_state": orch.persona_state,
         "stats": orch.get_stats(),
         "config": {
             "active_window_limit": orch.active_window_limit,
             "dynamic_consolidation": orch.dynamic_consolidation,
-            "semantic_recall": orch.semantic_recall
+            "semantic_recall": orch.semantic_recall,
+            "dynamic_persona": orch.dynamic_persona
         }
     }
 
@@ -152,18 +162,37 @@ async def update_sensory_context(payload: SensoryContextUpdate):
 async def update_config(payload: ConfigUpdate):
     """Update context limits and toggles dynamically for a session."""
     orch = get_orchestrator(payload.session_id)
+    # Support dynamic_persona fallback if not provided
+    dp = payload.dynamic_persona if payload.dynamic_persona is not None else orch.dynamic_persona
     orch.set_config(
         active_window_limit=payload.active_window_limit,
         dynamic_consolidation=payload.dynamic_consolidation,
-        semantic_recall=payload.semantic_recall
+        semantic_recall=payload.semantic_recall,
+        dynamic_persona=dp
     )
     return {
         "status": "success",
         "config": {
             "active_window_limit": orch.active_window_limit,
             "dynamic_consolidation": orch.dynamic_consolidation,
-            "semantic_recall": orch.semantic_recall
+            "semantic_recall": orch.semantic_recall,
+            "dynamic_persona": orch.dynamic_persona
         },
+        "stats": orch.get_stats()
+    }
+
+
+@router.post("/persona")
+async def update_persona(payload: PersonaUpdate):
+    """Manually update or edit the model's evolved character/persona guidelines."""
+    orch = get_orchestrator(payload.session_id)
+    orch.persona_state = payload.persona_state
+    if payload.dynamic_persona is not None:
+        orch.dynamic_persona = payload.dynamic_persona
+    return {
+        "status": "success",
+        "persona_state": orch.persona_state,
+        "dynamic_persona": orch.dynamic_persona,
         "stats": orch.get_stats()
     }
 
@@ -577,6 +606,39 @@ def get_available_tools():
                     "required": ["query"]
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_persona",
+                "description": "Retrieves your own current dynamic character traits, voice styles, and evolution settings. Use this to review how your persona is currently defined.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "update_persona",
+                "description": "Updates your own character traits, instructions, style, and rules. Use this to evolve, redefine yourself, or alter your behavioral constraints as you wish.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "persona_state": {
+                            "type": "string",
+                            "description": "The complete revised character/persona markdown block starting with '### EVOLVING AGENT CHARACTER & STYLE'."
+                        },
+                        "dynamic_persona": {
+                            "type": "boolean",
+                            "description": "Set to true to keep learning and evolving automatically, or false to lock current traits."
+                        }
+                    },
+                    "required": ["persona_state"]
+                }
+            }
         }
     ]
 
@@ -694,6 +756,39 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     if delegate_to_subagent:
                         return await delegate_to_subagent(role, task, model=model)
                     return "Error: sub_agents module could not be loaded."
+                    
+                elif func_name == "get_persona":
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_execution",
+                            "id": tool_msg_id,
+                            "tool": func_name,
+                            "args": {}
+                        }),
+                        websocket,
+                    )
+                    return json.dumps({
+                        "persona_state": orch.persona_state,
+                        "dynamic_persona": orch.dynamic_persona
+                    })
+                    
+                elif func_name == "update_persona":
+                    persona_state = func_args.get("persona_state", "")
+                    dynamic_persona = func_args.get("dynamic_persona", None)
+                    
+                    await manager.send_personal_message(
+                        json.dumps({
+                            "type": "tool_execution",
+                            "id": tool_msg_id,
+                            "tool": func_name,
+                            "args": {"persona_state": persona_state, "dynamic_persona": dynamic_persona}
+                        }),
+                        websocket,
+                    )
+                    orch.persona_state = persona_state
+                    if dynamic_persona is not None:
+                        orch.dynamic_persona = dynamic_persona
+                    return "Persona successfully updated."
                     
                 elif func_name == "search_web":
                     query = func_args.get("query", "")
@@ -1440,9 +1535,11 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
                     orch.add_message(role="assistant", content=full_content)
 
-                    # 5. Trigger asynchronous memory consolidation in the background
+                    # 5. Trigger asynchronous memory consolidation and persona evolution in the background
                     if orch.dynamic_consolidation:
                         await orch.consolidate_memory_background(model)
+                    if orch.dynamic_persona:
+                        await orch.evolve_persona_background(model)
 
                     # Get latest stats to return to frontend
                     context_stats = orch.get_stats()

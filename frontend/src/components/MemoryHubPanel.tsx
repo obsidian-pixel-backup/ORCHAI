@@ -28,9 +28,11 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
   const [activeLimit, setActiveLimit] = useState<number>(2000);
   const [dynamicConsolidation, setDynamicConsolidation] = useState<boolean>(true);
   const [semanticRecall, setSemanticRecall] = useState<boolean>(true);
+  const [dynamicPersona, setDynamicPersona] = useState<boolean>(true);
 
   // Backend sync state
   const [worldState, setWorldState] = useState<string>('');
+  const [personaState, setPersonaState] = useState<string>('');
   const [contextStats, setContextStats] = useState<ContextStats>({
     active_tokens: 0,
     archived_tokens: 0,
@@ -45,6 +47,8 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
   // UI state
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editedState, setEditedState] = useState<string>('');
+  const [isEditingPersona, setIsEditingPersona] = useState<boolean>(false);
+  const [editedPersonaState, setEditedPersonaState] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [loadingSearch, setLoadingSearch] = useState<boolean>(false);
@@ -57,6 +61,8 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
         const data = await res.json();
         setWorldState(data.world_state);
         setEditedState(data.world_state);
+        setPersonaState(data.persona_state || '');
+        setEditedPersonaState(data.persona_state || '');
         if (data.stats) {
           setContextStats(data.stats);
         }
@@ -64,6 +70,7 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
           setActiveLimit(data.config.active_window_limit);
           setDynamicConsolidation(data.config.dynamic_consolidation);
           setSemanticRecall(data.config.semantic_recall);
+          setDynamicPersona(data.config.dynamic_persona !== undefined ? data.config.dynamic_persona : true);
         }
       }
     } catch (err) {
@@ -80,7 +87,7 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
   }, [chatId, wsState, stats?.tokens]);
 
   // Update backend config when states change
-  const saveConfig = async (limit: number, consol: boolean, recall: boolean) => {
+  const saveConfig = async (limit: number, consol: boolean, recall: boolean, persona: boolean) => {
     try {
       await fetch('http://127.0.0.1:8000/api/chat/config', {
         method: 'POST',
@@ -90,6 +97,7 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
           active_window_limit: limit,
           dynamic_consolidation: consol,
           semantic_recall: recall,
+          dynamic_persona: persona,
         }),
       });
       fetchWorldState();
@@ -100,19 +108,25 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
 
   const handleLimitChange = (val: number) => {
     setActiveLimit(val);
-    saveConfig(val, dynamicConsolidation, semanticRecall);
+    saveConfig(val, dynamicConsolidation, semanticRecall, dynamicPersona);
   };
 
   const handleToggleConsolidation = () => {
     const nextVal = !dynamicConsolidation;
     setDynamicConsolidation(nextVal);
-    saveConfig(activeLimit, nextVal, semanticRecall);
+    saveConfig(activeLimit, nextVal, semanticRecall, dynamicPersona);
   };
 
   const handleToggleRecall = () => {
     const nextVal = !semanticRecall;
     setSemanticRecall(nextVal);
-    saveConfig(activeLimit, dynamicConsolidation, nextVal);
+    saveConfig(activeLimit, dynamicConsolidation, nextVal, dynamicPersona);
+  };
+
+  const handleTogglePersona = () => {
+    const nextVal = !dynamicPersona;
+    setDynamicPersona(nextVal);
+    saveConfig(activeLimit, dynamicConsolidation, semanticRecall, nextVal);
   };
 
   // Handle world state save
@@ -133,6 +147,27 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
       }
     } catch (err) {
       console.error('Failed to save edited world state', err);
+    }
+  };
+
+  // Handle persona state save
+  const handleSavePersonaState = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/chat/persona', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: chatId,
+          persona_state: editedPersonaState
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPersonaState(data.persona_state);
+        setIsEditingPersona(false);
+      }
+    } catch (err) {
+      console.error('Failed to save edited persona state', err);
     }
   };
 
@@ -251,6 +286,14 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
           </div>
           <button className={`toggle-switch ${semanticRecall ? 'on' : 'off'}`} aria-label="Toggle Semantic Episodic Recall" />
         </div>
+
+        <div className="toggle-control" onClick={handleTogglePersona}>
+          <div className="toggle-info">
+            <div className="toggle-label">Dynamic Persona Evolution</div>
+            <div className="toggle-desc">Asynchronously refine character and style traits</div>
+          </div>
+          <button className={`toggle-switch ${dynamicPersona ? 'on' : 'off'}`} aria-label="Toggle Dynamic Persona Evolution" />
+        </div>
       </div>
 
       {/* ── Live Cognitive World State Workspace ── */}
@@ -283,6 +326,40 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
             value={editedState}
             onChange={(e) => setEditedState(e.target.value)}
             placeholder="Edit what the model remembers about your project or tasks..."
+          />
+        )}
+      </div>
+
+      {/* ── Live Evolving Agent Persona Workspace ── */}
+      <div className="optimizer-section world-state-workspace">
+        <div className="workspace-header">
+          <h3>Evolving Agent Persona</h3>
+          {!isEditingPersona ? (
+            <button className="edit-btn" onClick={() => setIsEditingPersona(true)}>Refine</button>
+          ) : (
+            <div className="edit-actions">
+              <button className="cancel-btn" onClick={() => setIsEditingPersona(false)}>Cancel</button>
+              <button className="save-btn" onClick={handleSavePersonaState}>Save</button>
+            </div>
+          )}
+        </div>
+
+        {!isEditingPersona ? (
+          <div className="world-state-card">
+            {personaState ? (
+              <pre className="world-state-content">{personaState}</pre>
+            ) : (
+              <div className="world-state-empty">
+                Persona is currently empty. Start chatting to build evolved context!
+              </div>
+            )}
+          </div>
+        ) : (
+          <textarea
+            className="world-state-editor"
+            value={editedPersonaState}
+            onChange={(e) => setEditedPersonaState(e.target.value)}
+            placeholder="Edit character traits, voice styles, or direct instructions for the agent..."
           />
         )}
       </div>

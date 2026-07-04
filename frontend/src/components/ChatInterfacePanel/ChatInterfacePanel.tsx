@@ -86,6 +86,7 @@ export function ChatInterfacePanel({
   }, []);
 
   const [queuedMessages, setQueuedMessages] = useState<Message[]>([]);
+  const [isQueuedCollapsed, setIsQueuedCollapsed] = useState(false);
   const queuedMessagesRef = useRef(queuedMessages);
   const isStreamingRef = useRef(false);
   const messagesRef = useRef(messages);
@@ -97,6 +98,11 @@ export function ChatInterfacePanel({
   const maxTokensRef = useRef(maxTokens);
 
   useEffect(() => { queuedMessagesRef.current = queuedMessages; }, [queuedMessages]);
+  useEffect(() => {
+    if (queuedMessages.length <= 1) {
+      setIsQueuedCollapsed(false);
+    }
+  }, [queuedMessages.length]);
   useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { selectedModelRef.current = selectedModel; }, [selectedModel]);
@@ -778,21 +784,48 @@ export function ChatInterfacePanel({
         <div className="chat-input-inner">
           {queuedMessages.length > 0 && (
             <div className="queued-messages-container">
-              <div className="queued-messages-header">
+              <div 
+                className={`queued-messages-header ${queuedMessages.length > 1 ? 'collapsible' : ''}`}
+                onClick={() => {
+                  if (queuedMessages.length > 1) {
+                    setIsQueuedCollapsed(!isQueuedCollapsed);
+                  }
+                }}
+                title={queuedMessages.length > 1 ? (isQueuedCollapsed ? "Expand queued messages" : "Collapse queued messages") : undefined}
+              >
                 <span className="queued-messages-title">Queued ({queuedMessages.length})</span>
-              </div>
-              <div className="queued-messages-list">
-                {queuedMessages.map(msg => (
-                  <div key={msg.id} className="queued-message-chip">
-                    <span className="queued-message-text">
-                      {msg.content || (msg.documents?.length ? `Attached: ${msg.documents[0].name}` : 'Image attached')}
-                    </span>
-                    <button className="queued-message-cancel" onClick={() => setQueuedMessages(prev => prev.filter(m => m.id !== msg.id))} title="Cancel queued message">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                    </button>
+                {queuedMessages.length > 1 && (
+                  <div className="queued-messages-toggle">
+                    <svg 
+                      width="12" 
+                      height="12" 
+                      viewBox="0 0 24 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2.5" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                      style={{ transform: isQueuedCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}
+                    >
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
                   </div>
-                ))}
+                )}
               </div>
+              {!isQueuedCollapsed && (
+                <div className="queued-messages-list">
+                  {queuedMessages.map(msg => (
+                    <div key={msg.id} className="queued-message-chip">
+                      <span className="queued-message-text">
+                        {msg.content || (msg.documents?.length ? `Attached: ${msg.documents[0].name}` : 'Image attached')}
+                      </span>
+                      <button className="queued-message-cancel" onClick={() => setQueuedMessages(prev => prev.filter(m => m.id !== msg.id))} title="Cancel queued message">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <ChatInput 
