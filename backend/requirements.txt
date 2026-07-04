@@ -3,6 +3,7 @@ uvicorn
 websockets
 pydantic
 httpx
+truststore
 duckduckgo-search
 nodriver
 beautifulsoup4

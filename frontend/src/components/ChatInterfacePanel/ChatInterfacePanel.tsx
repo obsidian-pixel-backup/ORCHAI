@@ -37,7 +37,7 @@ interface ChatInterfacePanelProps {
   isDarkTheme: boolean;
   onToggleTheme: () => void;
   sendOnEnter?: boolean;
-  models?: {name: string, supports_reasoning: boolean, supports_vision?: boolean}[];
+  models?: {name: string, supports_reasoning: boolean, supports_vision?: boolean, can_chat?: boolean}[];
   onModelChange?: (model: string) => void;
   isAuxiliaryPaneOpen?: boolean;
   onToggleAuxiliaryPane?: () => void;
@@ -600,19 +600,25 @@ export function ChatInterfacePanel({
           
           {isModelDropdownOpen && models.length > 0 && (
             <div className="custom-model-dropdown" style={{ top: '100%', left: 0, marginTop: '8px', minWidth: '220px', zIndex: 100 }}>
-              {models.map((m) => (
-                <div 
-                  key={m.name} 
-                  className={`custom-model-option ${m.name === selectedModel ? 'selected' : ''}`}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (onModelChange) onModelChange(m.name);
-                    setIsModelDropdownOpen(false);
-                  }}
-                >
-                  {m.name}
-                </div>
-              ))}
+              {models.map((m) => {
+                const notChat = m.can_chat === false;
+                return (
+                  <div
+                    key={m.name}
+                    className={`custom-model-option ${m.name === selectedModel ? 'selected' : ''} ${notChat ? 'disabled' : ''}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (notChat) return;
+                      if (onModelChange) onModelChange(m.name);
+                      setIsModelDropdownOpen(false);
+                    }}
+                    title={notChat ? 'Embedding model — it produces vectors, not text, so it can’t generate chat replies.' : undefined}
+                  >
+                    <span className="model-option-name">{m.name}</span>
+                    {notChat && <span className="model-option-badge">Not chat-compatible</span>}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

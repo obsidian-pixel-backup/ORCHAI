@@ -861,6 +861,24 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             consecutive_tool_iterations = 0
             consecutive_scaffold_iterations = 0
 
+            # Detect model capabilities once. Models pulled from Hugging Face and
+            # small models often ship without a tool-calling or thinking template;
+            # sending `tools`/`think` to them makes Ollama return 400 Bad Request.
+            # Ollama's /api/show reports a `capabilities` list (e.g. ["completion",
+            # "tools", "thinking", "vision"]). We only gate when that list is present
+            # and non-empty, so older Ollama versions keep the previous behaviour.
+            model_supports_tools = True
+            model_supports_thinking = True
+            try:
+                show_res = await client.post(f"{OLLAMA_BASE_URL}/api/show", json={"name": model})
+                if show_res.status_code == 200:
+                    caps = show_res.json().get("capabilities", []) or []
+                    if isinstance(caps, list) and caps:
+                        model_supports_tools = "tools" in caps
+                        model_supports_thinking = "thinking" in caps
+            except Exception:
+                pass
+
             while True:
                 if consecutive_tool_iterations > 15 or consecutive_scaffold_iterations > 5:
                     error_msg = "\n\n> [!CRITICAL]\n> **System Error:** The model exceeded the maximum allowed autonomous iterations (Psycho Loop Guard triggered). Generation halted.\n"
@@ -889,9 +907,11 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     "messages": orchestrated_messages,
                     "stream": True,
                     "options": merged_options,
-                    "think": True,
                 }
-                ollama_payload["tools"] = tools
+                if model_supports_thinking:
+                    ollama_payload["think"] = True
+                if model_supports_tools:
+                    ollama_payload["tools"] = tools
 
                 full_content = ""
                 full_thinking = ""
@@ -1388,11 +1408,12 @@ async def list_models():
                     # Hardcode reasoning=True for ornith as it explicitly uses <think>
                     if "ornith" in m_name.lower():
                         return {
-                            "name": m_name, 
+                            "name": m_name,
                             "supports_reasoning": True,
-                            "supports_vision": False
+                            "supports_vision": False,
+                            "can_chat": True
                         }
-                        
+
                     try:
                         res = await client.post(f"{OLLAMA_BASE_URL}/api/show", json={"name": m_name})
                         if res.status_code == 200:
@@ -1400,26 +1421,39 @@ async def list_models():
                             template = show_data.get("template", "").lower()
                             system = show_data.get("system", "").lower()
                             capabilities = show_data.get("details", {}).get("families", [])
-                            
+
+                            # Ollama's top-level `capabilities` list tells us what the
+                            # model can actually do. A model is chat-usable only if it
+                            # can generate ("completion"); embedding-only models report
+                            # ["embedding"] and cannot be used in the chat endpoint.
+                            caps = show_data.get("capabilities", []) or []
+                            if not isinstance(caps, list):
+                                caps = []
+                            can_chat = ("completion" in caps) if caps else True
+                            if caps and "embedding" in caps and "completion" not in caps:
+                                can_chat = False
+
                             supports_reasoning = (
+                                "thinking" in caps or
                                 "thinking" in capabilities or
-                                "<think>" in template or "</think>" in template or 
+                                "<think>" in template or "</think>" in template or
                                 "<think>" in system or "</think>" in system
                             )
-                            
+
                             families = show_data.get("details", {}).get("families", [])
                             if not isinstance(families, list):
                                 families = []
-                            supports_vision = any(fam.lower() in ['clip', 'llava', 'vision'] for fam in families)
-                            
+                            supports_vision = ("vision" in caps) or any(fam.lower() in ['clip', 'llava', 'vision'] for fam in families)
+
                             return {
-                                "name": m_name, 
+                                "name": m_name,
                                 "supports_reasoning": supports_reasoning,
-                                "supports_vision": supports_vision
+                                "supports_vision": supports_vision,
+                                "can_chat": can_chat
                             }
                     except Exception:
                         pass
-                    return {"name": m_name, "supports_reasoning": False, "supports_vision": False}
+                    return {"name": m_name, "supports_reasoning": False, "supports_vision": False, "can_chat": True}
                 
                 models_info = await asyncio.gather(*(check_reasoning(name) for name in model_names))
                 return {"models": list(models_info)}

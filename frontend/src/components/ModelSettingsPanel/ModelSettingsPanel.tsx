@@ -20,7 +20,7 @@ interface ModelSettingsPanelProps {
     elapsed: number;
   };
   chatId: string;
-  models: {name: string, supports_reasoning: boolean, supports_vision?: boolean}[];
+  models: {name: string, supports_reasoning: boolean, supports_vision?: boolean, can_chat?: boolean}[];
   loadingModels: boolean;
 }
 
@@ -160,21 +160,33 @@ export function ModelSettingsPanel({
               </div>
               {isDropdownOpen && (
                 <div className="custom-model-dropdown">
-                  {models.map((m) => (
-                    <div 
-                      key={m.name} 
-                      className={`custom-model-option ${m.name === selectedModel ? 'selected' : ''}`}
-                      onClick={() => {
-                        onModelChange(m.name);
-                        setIsDropdownOpen(false);
-                      }}
-                    >
-                      {m.name}
-                    </div>
-                  ))}
+                  {models.map((m) => {
+                    const notChat = m.can_chat === false;
+                    return (
+                      <div
+                        key={m.name}
+                        className={`custom-model-option ${m.name === selectedModel ? 'selected' : ''} ${notChat ? 'disabled' : ''}`}
+                        onClick={() => {
+                          if (notChat) return;
+                          onModelChange(m.name);
+                          setIsDropdownOpen(false);
+                        }}
+                        title={notChat ? 'Embedding model — it produces vectors, not text, so it can’t generate chat replies.' : undefined}
+                      >
+                        <span className="model-option-name">{m.name}</span>
+                        {notChat && <span className="model-option-badge">Not chat-compatible</span>}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
+          )}
+          {models.some((m) => m.can_chat === false) && (
+            <p className="model-chat-note">
+              Greyed models are <strong>embedding models</strong>. They convert text into vectors for
+              search/memory and can’t generate replies, so they can’t be selected for chat.
+            </p>
           )}
         </div>
 

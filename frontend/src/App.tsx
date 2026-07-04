@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import './App.css';
 import { ChatManagementPanel } from './components/ChatManagementPanel/ChatManagementPanel';
 import type { Message } from './components/ChatInterfacePanel/ChatInterfacePanel';
@@ -9,6 +9,7 @@ import { ModelSettingsPanel } from './components/ModelSettingsPanel/ModelSetting
 import { MemoryHubPanel } from './components/MemoryHubPanel';
 import { SkillsManagementPanel } from './components/SkillsManagementPanel/SkillsManagementPanel';
 import { AuxiliaryPane } from './components/AuxiliaryPane/AuxiliaryPane';
+import { ModelLibraryPanel } from './components/ModelLibraryPanel/ModelLibraryPanel';
 
 export interface Stats {
   tokens_per_second: number;
@@ -55,6 +56,7 @@ function App() {
   const [isAuxiliaryPaneOpen, setIsAuxiliaryPaneOpen] = useState(false);
   const [activeNavTab, setActiveNavTab] = useState<NavTab>('chats');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showModelLibrary, setShowModelLibrary] = useState(false);
   const [isDarkTheme, setIsDarkTheme] = useState<boolean>(() => {
     return localStorage.getItem('orchai_theme') !== 'light';
   });
@@ -62,56 +64,69 @@ function App() {
   const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() => localStorage.getItem('orchai_notifications') === 'true');
   const [compactMode, setCompactMode] = useState<boolean>(() => localStorage.getItem('orchai_compact') === 'true');
   const [language, setLanguage] = useState<string>(() => localStorage.getItem('orchai_lang') || 'en');
-  const [models, setModels] = useState<{name: string, supports_reasoning: boolean, supports_vision?: boolean}[]>([]);
+  const [models, setModels] = useState<{name: string, supports_reasoning: boolean, supports_vision?: boolean, can_chat?: boolean}[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
+
+  // Fetch the model list once and apply it (also picks a sensible default model).
+  // Returns true on success so the mount effect can retry while the backend boots,
+  // and so the Model Library can refresh the list after an install/delete.
+  const refreshModels = useCallback(async (): Promise<boolean> => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/chat/models');
+      if (!res.ok) throw new Error('Failed to fetch models');
+      const data = await res.json();
+
+      const rawModels = Array.isArray(data) ? data : Array.isArray(data.models) ? data.models : [];
+      const formattedModels = rawModels.map((m: any) =>
+        typeof m === 'string' ? { name: m, supports_reasoning: false, supports_vision: false, can_chat: true } : m
+      );
+
+      setModels(formattedModels);
+      setModelsLoading(false);
+
+      setSelectedModel(current => {
+        const hasSelectedModel = formattedModels.some((m: {name: string}) => m.name === current);
+        if (formattedModels.length > 0 && (!current || !hasSelectedModel)) {
+          // Only auto-select models that can actually chat (skip embedding models).
+          const chatCapable = formattedModels.filter((m: any) => m.can_chat !== false);
+          const pool = chatCapable.length > 0 ? chatCapable : formattedModels;
+          const qwenModels = pool.filter((m: any) => m.name.toLowerCase().includes('qwen'));
+          if (qwenModels.length > 0) {
+            const getParamCount = (name: string) => {
+              const matchB = name.match(/(\d+(?:\.\d+)?)b/i);
+              if (matchB) return parseFloat(matchB[1]);
+              const matchM = name.match(/(\d+(?:\.\d+)?)m/i);
+              if (matchM) return parseFloat(matchM[1]) / 1000;
+              return 0;
+            };
+            qwenModels.sort((a: any, b: any) => getParamCount(b.name) - getParamCount(a.name));
+            return qwenModels[0].name;
+          } else {
+            return pool[0].name;
+          }
+        }
+        return current;
+      });
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
-    async function fetchModels(attempt = 1) {
-      try {
-        const res = await fetch('http://127.0.0.1:8000/api/chat/models');
-        if (!res.ok) throw new Error('Failed to fetch models');
-        const data = await res.json();
-        if (cancelled) return;
-
-        const rawModels = Array.isArray(data) ? data : Array.isArray(data.models) ? data.models : [];
-        const formattedModels = rawModels.map((m: any) => 
-          typeof m === 'string' ? { name: m, supports_reasoning: false, supports_vision: false } : m
-        );
-
-        setModels(formattedModels);
-        setModelsLoading(false);
-
-        setSelectedModel(current => {
-          const hasSelectedModel = formattedModels.some((m: {name: string}) => m.name === current);
-          if (formattedModels.length > 0 && (!current || !hasSelectedModel)) {
-            const qwenModels = formattedModels.filter((m: any) => m.name.toLowerCase().includes('qwen'));
-            if (qwenModels.length > 0) {
-              const getParamCount = (name: string) => {
-                const matchB = name.match(/(\d+(?:\.\d+)?)b/i);
-                if (matchB) return parseFloat(matchB[1]);
-                const matchM = name.match(/(\d+(?:\.\d+)?)m/i);
-                if (matchM) return parseFloat(matchM[1]) / 1000;
-                return 0;
-              };
-              qwenModels.sort((a: any, b: any) => getParamCount(b.name) - getParamCount(a.name));
-              return qwenModels[0].name;
-            } else {
-              return formattedModels[0].name;
-            }
-          }
-          return current;
-        });
-      } catch (e) {
-        if (!cancelled) {
-          if (attempt < 10) setTimeout(() => fetchModels(attempt + 1), 1000);
-          else { setModels([]); setModelsLoading(false); }
-        }
+    let attempt = 1;
+    const run = async () => {
+      if (cancelled) return;
+      const ok = await refreshModels();
+      if (!ok && !cancelled) {
+        if (attempt < 10) { attempt += 1; setTimeout(run, 1000); }
+        else { setModels([]); setModelsLoading(false); }
       }
-    }
-    fetchModels();
+    };
+    run();
     return () => { cancelled = true; };
-  }, []);
+  }, [refreshModels]);
 
   useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light');
@@ -361,6 +376,7 @@ function App() {
         activeTab={activeNavTab}
         onTabChange={(tab) => { setActiveNavTab(tab); if (!isDrawerOpen) setIsDrawerOpen(true); }}
         onSettingsClick={() => setShowSettingsModal(true)}
+        onModelLibraryClick={() => setShowModelLibrary(true)}
       />
 
       {/* 2. Collapsible Content Drawer (~240px → 0) */}
@@ -403,6 +419,14 @@ function App() {
         onClose={() => setIsAuxiliaryPaneOpen(false)} 
         activeMessages={activeMessages} 
       />
+
+      {/* Model Library (download from Hugging Face / manage disk) */}
+      {showModelLibrary && (
+        <ModelLibraryPanel
+          onClose={() => setShowModelLibrary(false)}
+          onModelsChanged={refreshModels}
+        />
+      )}
 
       {/* Settings Modal Overlay (2-column layout) */}
       {showSettingsModal && (

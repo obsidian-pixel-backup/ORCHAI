@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "electron:dev": "tsc -p tsconfig.electron.json && concurrently \"vite\" \"wait-on tcp:5173 && electron .\""
+    "electron:dev": "tsc -p tsconfig.electron.json && concurrently \"vite\" \"wait-on tcp:5173 && node scripts/launch-electron.mjs\""
   },
   "dependencies": {
     "react": "^19.2.6",
