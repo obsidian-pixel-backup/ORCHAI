@@ -259,8 +259,11 @@ async def generate_chat_title(payload: GenerateTitleRequest):
                 title_text = data.get("message", {}).get("content", "").strip()
                 
                 # Remove <think> blocks if present
-                import re
-                title_text = re.sub(r'<think>.*?</think>', '', title_text, flags=re.DOTALL).strip()
+                if "</think>" in title_text:
+                    title_text = title_text.split("</think>")[-1].strip()
+                else:
+                    import re
+                    title_text = re.sub(r'<think>.*?</think>', '', title_text, flags=re.DOTALL).strip()
                 
                 # Remove common prefixes
                 if title_text.lower().startswith("title:"):
@@ -697,6 +700,9 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
     # However, Ollama's default context size is 2048, which truncates web-scraped content.
     # Dynamically calculate context size based on actual prompt requirements
     merged_options = dict(options) if options else {}
+    if "num_predict" not in merged_options:
+        merged_options["num_predict"] = -1
+
     if "num_ctx" not in merged_options:
         # Sum estimated tokens across all messages
         total_prompt_tokens = sum(estimate_tokens(msg.get("content", "")) for msg in orchestrated_messages)
@@ -706,9 +712,9 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             num_predict = 32768
         target_ctx = total_prompt_tokens + num_predict + 1024 # Add 1k token safety buffer
         
-        # Round up to nearest power of 2 for memory efficiency, with min 4096 and max 65536
+        # Round up to nearest power of 2 for memory efficiency, with min 4096 and max 131072
         power_of_2 = 2 ** math.ceil(math.log2(max(target_ctx, 4096)))
-        merged_options["num_ctx"] = min(power_of_2, 65536)
+        merged_options["num_ctx"] = min(power_of_2, 131072)
     
     # Define available tools
 
@@ -1020,6 +1026,8 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             empty_response_count = 0
             consecutive_tool_iterations = 0
             consecutive_scaffold_iterations = 0
+            recent_identical_tool_calls = 0
+            last_tool_signature = None
 
             # Detect model capabilities once. Models pulled from Hugging Face and
             # small models often ship without a tool-calling or thinking template;
@@ -1313,6 +1321,52 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             
                 # Handle tool calls if the model requested them
                 if full_tool_calls:
+                    import json
+                    current_tool_signature = json.dumps(full_tool_calls, sort_keys=True)
+                    if current_tool_signature == last_tool_signature:
+                        recent_identical_tool_calls += 1
+                    else:
+                        recent_identical_tool_calls = 0
+                        last_tool_signature = current_tool_signature
+
+                    if recent_identical_tool_calls >= 3:
+                        error_msg = "\n\n> [!CRITICAL]\n> **System Error:** You are repeating the exact same tool call(s) with the exact same arguments repeatedly without making progress. Please change your strategy or stop calling this tool.\n"
+                        orch.add_message(role="assistant", content=full_content, tool_calls=full_tool_calls)
+                        orch.add_message(role="user", content=error_msg)
+                        
+                        orchestrated_messages.append({
+                            "role": "assistant",
+                            "content": full_content,
+                            "tool_calls": full_tool_calls
+                        })
+                        orchestrated_messages.append({
+                            "role": "user",
+                            "content": error_msg
+                        })
+                        
+                        await manager.send_personal_message(
+                            json.dumps({
+                                "type": "stream",
+                                "id": msg_id,
+                                "role": "model",
+                                "content": error_msg,
+                                "done": False,
+                                "stats": {
+                                    "tokens": overall_token_count,
+                                    "content_tokens": overall_content_token_count,
+                                    "thinking_tokens": overall_thinking_token_count,
+                                    "user_input_tokens": user_input_tokens,
+                                    "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
+                                    "tokens_per_second": round(final_tps, 1) if 'final_tps' in locals() else 0,
+                                    "elapsed": round(total_time_spent_generating, 2),
+                                }
+                            }),
+                            websocket,
+                        )
+                        
+                        consecutive_tool_iterations += 1
+                        continue
+
                     orch.add_message(role="assistant", content=full_content, tool_calls=full_tool_calls)
                     
                     orchestrated_messages.append({

@@ -42,9 +42,9 @@ class SparseMemoryIndex:
         self.avg_doc_len: float = 0.0
 
     def _tokenize(self, text: str) -> List[str]:
-        # Lowercase, alphanumeric terms, filter out stopwords
-        terms = re.findall(r'[a-zA-Z0-9_]+', text.lower())
-        return [t for t in terms if t not in STOPWORDS and len(t) > 1]
+        # Lowercase, allow alphanumeric and path punctuation, filter out stopwords
+        terms = re.findall(r'[a-zA-Z0-9_./\\:-]+', text.lower())
+        return [t for t in terms if t not in STOPWORDS and (len(t) > 1 or t.isalpha())]
 
     def add_message(self, msg_id: str, role: str, content: str):
         """Add a message to the search index."""
@@ -474,10 +474,15 @@ class ContextOrchestrator:
         archived_messages = []
         token_accum = 0
 
+        # Calculate static context size (Base Prompt + Persona + World State + Skills approximation)
+        static_tokens = estimate_tokens(self.base_system_prompt) + estimate_tokens(self.persona_state) + estimate_tokens(self.world_state) + 2000
+        # Dynamically adjust the active window limit to ensure static tokens are always accommodated
+        effective_limit = max(4096, self.active_window_limit - static_tokens)
+
         # Iterate backwards from the most recent messages to build the Active Window
         for msg in reversed(self._messages):
             msg_tokens = msg.get("estimated_tokens", 100)
-            if token_accum + msg_tokens <= self.active_window_limit or len(active_messages) < 2:
+            if token_accum + msg_tokens <= effective_limit or len(active_messages) < 2:
                 active_messages.insert(0, msg)
                 token_accum += msg_tokens
             else:
@@ -536,14 +541,15 @@ class ContextOrchestrator:
                 f"Instructions:\n"
                 f"1. Update the 'Cognitive World State' by incorporating important information from the new messages.\n"
                 f"2. Discard ephemeral or irrelevant conversational details (e.g., greetings, thinking processes, minor errors quickly corrected).\n"
-                f"3. Maintain a dense, highly structured Markdown format.\n"
-                f"4. Organize information into logical sections such as:\n"
-                f"   - User Profile & Environment (OS, stack, preferences)\n"
+                f"3. CRITICAL: You MUST preserve exact file paths, configuration keys, URLs, and directory names verbatim. Do not summarize paths (e.g., keep 'E:/DEVELOPER PROJECTS/ORCHAI', do not change to 'dev folder').\n"
+                f"4. Maintain a dense, highly structured Markdown format.\n"
+                f"5. Organize information into logical sections such as:\n"
+                f"   - User Profile & Environment (OS, stack, exact paths)\n"
                 f"   - Project Architecture & Core Constraints\n"
                 f"   - Ongoing Tasks & Objectives\n"
                 f"   - Key Decisions & Discoveries\n"
-                f"5. The final output must be strictly under 400 words, serving as a compressed knowledge artifact.\n"
-                f"6. Do NOT include any conversational intro/outro. Output ONLY the raw markdown of the revised world state."
+                f"6. The final output must be strictly under 600 words, serving as a compressed knowledge artifact.\n"
+                f"7. Do NOT include any conversational intro/outro. Output ONLY the raw markdown of the revised world state."
             )
 
             payload = {
@@ -568,6 +574,14 @@ class ContextOrchestrator:
                 if response.status_code == 200:
                     data = response.json()
                     summary_text = data.get("message", {}).get("content", "").strip()
+                    
+                    # Remove <think> blocks if present (even if opening tag is missing)
+                    if "</think>" in summary_text:
+                        summary_text = summary_text.split("</think>")[-1].strip()
+                    else:
+                        import re
+                        summary_text = re.sub(r'<think>.*?</think>', '', summary_text, flags=re.DOTALL).strip()
+
                     if summary_text:
                         # Guard against race conditions (e.g., state was cleared while we waited)
                         if self._consolidation_generation == generation:
@@ -771,12 +785,21 @@ class ContextOrchestrator:
                 if response.status_code == 200:
                     data = response.json()
                     persona_text = data.get("message", {}).get("content", "").strip()
-                    # Remove <think> blocks if present
-                    import re
-                    persona_text = re.sub(r'<think>.*?</think>', '', persona_text, flags=re.DOTALL).strip()
+                    
+                    # Remove <think> blocks if present (even if opening tag is missing)
+                    if "</think>" in persona_text:
+                        persona_text = persona_text.split("</think>")[-1].strip()
+                    else:
+                        import re
+                        persona_text = re.sub(r'<think>.*?</think>', '', persona_text, flags=re.DOTALL).strip()
+                        
                     if persona_text:
                         if self._persona_generation == generation:
-                            if "EVOLVING AGENT CHARACTER" not in persona_text:
+                            # Force extract only the persona block if the model hallucinates conversational text before it
+                            if "### EVOLVING AGENT CHARACTER" in persona_text:
+                                parts = persona_text.split("### EVOLVING AGENT CHARACTER")
+                                persona_text = "### EVOLVING AGENT CHARACTER" + parts[-1]
+                            elif "EVOLVING AGENT CHARACTER" not in persona_text:
                                 persona_text = "### EVOLVING AGENT CHARACTER & STYLE\n" + persona_text
                             self.persona_state = persona_text
                             logger.info("Persona evolution completed successfully.")
