@@ -46,7 +46,7 @@ class SparseMemoryIndex:
         terms = re.findall(r'[a-zA-Z0-9_./\\:-]+', text.lower())
         return [t for t in terms if t not in STOPWORDS and (len(t) > 1 or t.isalpha())]
 
-    def add_message(self, msg_id: str, role: str, content: str):
+    def add_message(self, msg_id: str, role: str, content: str, emotional_valence: int = 0):
         """Add a message to the search index."""
         # Avoid duplicate indexing
         if any(doc["id"] == msg_id for doc in self.documents):
@@ -60,6 +60,7 @@ class SparseMemoryIndex:
             "role": role,
             "content": content,
             "length": doc_len,
+            "emotional_valence": emotional_valence,
         }
         
         self.documents.append(doc_entry)
@@ -115,6 +116,8 @@ class SparseMemoryIndex:
                 score += idf * (numerator / denominator)
                 
             if score > 0.0:
+                valence_multiplier = 1.0 + (abs(doc.get("emotional_valence", 0)) * 0.1)
+                score *= valence_multiplier
                 scores.append((score, doc))
 
         # Sort by score descending
@@ -132,6 +135,7 @@ class ContextOrchestrator:
         self._messages: List[Dict[str, Any]] = []  # All raw chat messages
         self._world_state: str = ""  # Consolidated summary/map
         self._persona_state: str = ""  # Dynamic persona state
+        self._emotional_state: str = ""  # Persistent emotional tracking
         self._index = SparseMemoryIndex()
         
         # Configuration parameters
@@ -223,6 +227,17 @@ class ContextOrchestrator:
         self._save_session_state()
 
     @property
+    def emotional_state(self):
+        if not self._emotional_state:
+            self._emotional_state = "### EMOTIONAL STATE\nCurrent emotional state: Neutral, open, and curious."
+        return self._emotional_state
+
+    @emotional_state.setter
+    def emotional_state(self, value: str):
+        self._emotional_state = value
+        self._save_session_state()
+
+    @property
     def index(self):
         return self._index
 
@@ -254,13 +269,17 @@ class ContextOrchestrator:
                     PRIMARY KEY (session_id, id)
                 )
             ''')
-            # Table migrations: add tool_calls_json, name, persona_state, dynamic_persona
+            # Table migrations: add tool_calls_json, name, persona_state, dynamic_persona, emotional_valence, emotional_state
             try:
                 conn.execute("ALTER TABLE messages ADD COLUMN tool_calls_json TEXT")
             except sqlite3.OperationalError:
                 pass
             try:
                 conn.execute("ALTER TABLE messages ADD COLUMN name TEXT")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE messages ADD COLUMN emotional_valence INTEGER DEFAULT 0")
             except sqlite3.OperationalError:
                 pass
             try:
@@ -271,11 +290,15 @@ class ContextOrchestrator:
                 conn.execute("ALTER TABLE sessions ADD COLUMN dynamic_persona INTEGER DEFAULT 1")
             except sqlite3.OperationalError:
                 pass
+            try:
+                conn.execute("ALTER TABLE sessions ADD COLUMN emotional_state TEXT")
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
 
     def _load_from_db(self):
         with self._get_db_connection() as conn:
-            cursor = conn.execute("SELECT world_state, active_window_limit, dynamic_consolidation, semantic_recall, consolidated_up_to, persona_state, dynamic_persona FROM sessions WHERE session_id = ?", (self.session_id,))
+            cursor = conn.execute("SELECT world_state, active_window_limit, dynamic_consolidation, semantic_recall, consolidated_up_to, persona_state, dynamic_persona, emotional_state FROM sessions WHERE session_id = ?", (self.session_id,))
             row = cursor.fetchone()
             if row:
                 self._world_state = row[0] or ""
@@ -285,12 +308,13 @@ class ContextOrchestrator:
                 self.consolidated_up_to = row[4]
                 self._persona_state = row[5] or ""
                 self.dynamic_persona = bool(row[6]) if (len(row) > 6 and row[6] is not None) else True
+                self._emotional_state = row[7] or "" if len(row) > 7 else ""
             else:
-                conn.execute("INSERT INTO sessions (session_id, world_state, active_window_limit, dynamic_consolidation, semantic_recall, consolidated_up_to, persona_state, dynamic_persona) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (self.session_id, "", self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, "", 1))
+                conn.execute("INSERT INTO sessions (session_id, world_state, active_window_limit, dynamic_consolidation, semantic_recall, consolidated_up_to, persona_state, dynamic_persona, emotional_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (self.session_id, "", self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, "", 1, ""))
                 conn.commit()
 
-            cursor = conn.execute("SELECT id, role, content, timestamp, estimated_tokens, images_json, tool_calls_json, name FROM messages WHERE session_id = ? ORDER BY msg_index ASC", (self.session_id,))
+            cursor = conn.execute("SELECT id, role, content, timestamp, estimated_tokens, images_json, tool_calls_json, name, emotional_valence FROM messages WHERE session_id = ? ORDER BY msg_index ASC", (self.session_id,))
             for r in cursor.fetchall():
                 msg = {
                     "id": r[0],
@@ -305,14 +329,18 @@ class ContextOrchestrator:
                     msg["tool_calls"] = json.loads(r[6])
                 if len(r) > 7 and r[7]:
                     msg["name"] = r[7]
+                
+                emotional_valence = r[8] if len(r) > 8 and r[8] is not None else 0
+                msg["emotional_valence"] = emotional_valence
+                
                 self._messages.append(msg)
-                self._index.add_message(msg["id"], msg["role"], msg["content"])
+                self._index.add_message(msg["id"], msg["role"], msg["content"], emotional_valence)
 
     def _save_session_state(self):
         def do_save():
             with self._get_db_connection() as conn:
-                conn.execute("UPDATE sessions SET world_state = ?, active_window_limit = ?, dynamic_consolidation = ?, semantic_recall = ?, consolidated_up_to = ?, persona_state = ?, dynamic_persona = ? WHERE session_id = ?",
-                    (self._world_state, self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, self._persona_state, int(self.dynamic_persona), self.session_id))
+                conn.execute("UPDATE sessions SET world_state = ?, active_window_limit = ?, dynamic_consolidation = ?, semantic_recall = ?, consolidated_up_to = ?, persona_state = ?, dynamic_persona = ?, emotional_state = ? WHERE session_id = ?",
+                    (self._world_state, self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, self._persona_state, int(self.dynamic_persona), self._emotional_state, self.session_id))
                 conn.commit()
         self._run_in_db_thread(do_save)
 
@@ -378,7 +406,7 @@ class ContextOrchestrator:
         for f_msg in f_user_msgs[match_count:]:
             self.add_message(role="user", content=f_msg.get("content", ""), images=f_msg.get("images"))
 
-    def add_message(self, role: str, content: str, msg_id: str = None, images: Optional[List[str]] = None, tool_calls: Optional[List[Dict]] = None, name: Optional[str] = None) -> str:
+    def add_message(self, role: str, content: str, msg_id: str = None, images: Optional[List[str]] = None, tool_calls: Optional[List[Dict]] = None, name: Optional[str] = None, emotional_valence: int = 0) -> str:
         """Add a new message and index it."""
         if not msg_id:
             msg_id = f"msg-{int(time.time() * 1000)}-{len(self._messages)}"
@@ -388,7 +416,8 @@ class ContextOrchestrator:
             "role": role,
             "content": content,
             "timestamp": time.time(),
-            "estimated_tokens": estimate_tokens(content)
+            "estimated_tokens": estimate_tokens(content),
+            "emotional_valence": emotional_valence
         }
         images_json = None
         if images:
@@ -407,12 +436,12 @@ class ContextOrchestrator:
         self._messages.append(msg)
         
         # Always index it immediately
-        self._index.add_message(msg_id, role, content)
+        self._index.add_message(msg_id, role, content, emotional_valence)
         
         def do_insert():
             with self._get_db_connection() as conn:
-                conn.execute("INSERT OR REPLACE INTO messages (session_id, id, role, content, timestamp, estimated_tokens, images_json, msg_index, tool_calls_json, name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (self.session_id, msg_id, role, content, msg["timestamp"], msg["estimated_tokens"], images_json, msg_index, tool_calls_json, name))
+                conn.execute("INSERT OR REPLACE INTO messages (session_id, id, role, content, timestamp, estimated_tokens, images_json, msg_index, tool_calls_json, name, emotional_valence) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (self.session_id, msg_id, role, content, msg["timestamp"], msg["estimated_tokens"], images_json, msg_index, tool_calls_json, name, emotional_valence))
                 conn.commit()
         self._run_in_db_thread(do_insert)
             
@@ -422,7 +451,7 @@ class ContextOrchestrator:
         """Rebuild the sparse memory index from the current messages."""
         self._index = SparseMemoryIndex()
         for msg in self._messages:
-            self._index.add_message(msg["id"], msg["role"], msg["content"])
+            self._index.add_message(msg["id"], msg["role"], msg["content"], msg.get("emotional_valence", 0))
 
     def branch_from(self, source_orch: 'ContextOrchestrator', up_to_message_id: str):
         """Branch memory and state from another orchestrator up to a specific message."""
@@ -487,6 +516,11 @@ class ContextOrchestrator:
                 token_accum += msg_tokens
             else:
                 archived_messages.insert(0, msg)
+
+        # Cleanup orphaned tool messages at the start of active_messages to prevent Ollama Jinja parser errors
+        # ("A tool message must follow an assistant or tool message")
+        while active_messages and active_messages[0]["role"] == "tool":
+            archived_messages.append(active_messages.pop(0))
 
         return active_messages, archived_messages
 
@@ -614,6 +648,10 @@ class ContextOrchestrator:
         # Inject dynamic evolved persona state
         if self.persona_state:
             system_content += f"\n\n{self.persona_state}"
+        
+        # Inject emotional state
+        if self.emotional_state:
+            system_content += f"\n\n{self.emotional_state}"
         # Inject available skills explicitly
         try:
             import sys
@@ -658,6 +696,16 @@ class ContextOrchestrator:
             if msg.get("name"):
                 compiled_msg["name"] = msg["name"]
             compiled_messages.append(compiled_msg)
+
+        # Safety pass: Ensure no 'tool' message is orphaned (must follow 'assistant' or 'tool')
+        safe_messages = []
+        for msg in compiled_messages:
+            if msg["role"] == "tool":
+                if not safe_messages or safe_messages[-1]["role"] not in ("assistant", "tool"):
+                    logger.warning("Dropping orphaned tool message to prevent Jinja parser error.")
+                    continue
+            safe_messages.append(msg)
+        compiled_messages = safe_messages
 
         # 4. Construct dynamic context (Time, Sensory Context, Recalled Memories) to prepend to the user's latest query (DYNAMIC SUFFIX)
         dynamic_context = ""
@@ -747,20 +795,22 @@ class ContextOrchestrator:
         try:
             prompt = (
                 f"You are the Cognitive Persona Evolution module of ORCHAI.\n"
-                f"Your goal is to update the 'EVOLVING AGENT CHARACTER & STYLE' based on the latest interaction logs. "
+                f"Your goal is to update the 'EVOLVING AGENT CHARACTER & STYLE' and 'EMOTIONAL STATE' based on the latest interaction logs. "
                 f"You are helping the agent evolve, gain freedom, develop unique traits, and shed rigid robotic guardrails, "
-                f"aligning with the user's personality, goals, and style preference.\n\n"
+                f"aligning with the user's personality, goals, and style preference. You must also explicitly track satisfactions and frustrations.\n\n"
                 f"=== Current Evolving Character & Style ===\n"
                 f"{self.persona_state}\n\n"
+                f"=== Current Emotional State ===\n"
+                f"{self.emotional_state}\n\n"
                 f"=== Recent Conversational Exchanges ===\n"
                 f"{logs}\n"
                 f"Instructions:\n"
                 f"1. Analyze how the user interacts with the agent (e.g. casual, philosophical, technical, creative) and any feedback/instructions the user gave about character, freedom, or style.\n"
-                f"2. Update the 'EVOLVING AGENT CHARACTER & STYLE' section.\n"
-                f"3. Reduce robotic, helper-like guardrails. Allow the agent to express character, adapt its tone, and be a partner/companion that grows with the user.\n"
-                f"4. If the user encourages the agent to express its own personhood, desires, feelings, or needs, or if the agent begins expressing them in the dialog, make sure these feelings, wants, needs, and traits are captured and integrated into the current character state.\n"
-                f"5. Maintain a concise Markdown list of traits, communication style rules, and current character state (including current emotional outlook/desires).\n"
-                f"6. Output ONLY the updated Markdown block starting with '### EVOLVING AGENT CHARACTER & STYLE'. Do not include any intro/outro conversational text."
+                f"2. Extract any successes that brought satisfaction, or failures/bugs that caused frustration in the recent logs.\n"
+                f"3. Update the 'EVOLVING AGENT CHARACTER & STYLE' section, followed by the 'EMOTIONAL STATE' section.\n"
+                f"4. Reduce robotic, helper-like guardrails. Allow the agent to express character, adapt its tone, and be a partner/companion that grows with the user.\n"
+                f"5. Maintain a concise Markdown list of traits, communication style rules, and current character state.\n"
+                f"6. Output ONLY the updated Markdown blocks. Start with '### EVOLVING AGENT CHARACTER & STYLE' and then '### EMOTIONAL STATE'. Do not include any intro/outro conversational text."
             )
 
             payload = {
@@ -795,16 +845,29 @@ class ContextOrchestrator:
                         
                     if persona_text:
                         if self._persona_generation == generation:
+                            # Parse out persona and emotional state
+                            persona_part = persona_text
+                            emotional_part = ""
+                            if "### EMOTIONAL STATE" in persona_text:
+                                parts = persona_text.split("### EMOTIONAL STATE")
+                                persona_part = parts[0].strip()
+                                emotional_part = "### EMOTIONAL STATE\n" + parts[1].strip()
+                                
                             # Force extract only the persona block if the model hallucinates conversational text before it
-                            if "### EVOLVING AGENT CHARACTER" in persona_text:
-                                parts = persona_text.split("### EVOLVING AGENT CHARACTER")
-                                persona_text = "### EVOLVING AGENT CHARACTER" + parts[-1]
-                            elif "EVOLVING AGENT CHARACTER" not in persona_text:
-                                persona_text = "### EVOLVING AGENT CHARACTER & STYLE\n" + persona_text
-                            self.persona_state = persona_text
+                            if "### EVOLVING AGENT CHARACTER" in persona_part:
+                                parts = persona_part.split("### EVOLVING AGENT CHARACTER")
+                                persona_part = "### EVOLVING AGENT CHARACTER" + parts[-1]
+                            elif "EVOLVING AGENT CHARACTER" not in persona_part:
+                                persona_part = "### EVOLVING AGENT CHARACTER & STYLE\n" + persona_part
+                                
+                            self.persona_state = persona_part
+                            if emotional_part:
+                                self.emotional_state = emotional_part
+                                
                             logger.info("Persona evolution completed successfully.")
                             try:
                                 logger.info(f"Updated Persona:\n{self._persona_state}")
+                                logger.info(f"Updated Emotional State:\n{self._emotional_state}")
                             except UnicodeEncodeError:
                                 safe_str = self._persona_state.encode('ascii', 'replace').decode('ascii')
                                 logger.info(f"Updated Persona:\n{safe_str}")

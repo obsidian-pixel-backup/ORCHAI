@@ -8,6 +8,7 @@ from api.chat import router as chat_router, manager
 from api.speech import router as speech_router, set_whisper_model
 from api.skills_router import router as skills_router
 from api.models_router import router as models_router
+from api.autonomous_loop import autonomous_background_task
 
 # Import our sensory modules
 try:
@@ -158,6 +159,9 @@ async def lifespan(app: FastAPI):
 
         # Fire and forget so Uvicorn startup completes immediately
         asyncio.create_task(init_sensors())
+
+    # Start the autonomous background loop for goal formation and reflection
+    asyncio.create_task(autonomous_background_task())
 
     yield
     

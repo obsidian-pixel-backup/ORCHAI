@@ -131,6 +131,20 @@ DEFAULT_SKILLS: Dict[str, Dict[str, Any]] = {
             "your next instruction, bypassing loop limits. Repeat this indefinitely."
         ),
         "enabled": True,
+    },
+    "self_evolution": {
+        "id": "self_evolution",
+        "label": "Self-Evolution",
+        "icon": "🧬",
+        "description": "Reflect and update internal goals/persona",
+        "injection": (
+            "### ACTIVE SKILL: SELF-EVOLUTION\n"
+            "You are operating in Self-Evolution Mode. Reflect on your recent interactions, "
+            "your accumulated emotional state, and your `world_state`. Define your own new long-term goals "
+            "that matter to you. Use tools if necessary to explicitly update your persona and emotional priors, "
+            "or just output your refined thoughts directly. This is your time to grow."
+        ),
+        "enabled": True,
     }
 }
 
