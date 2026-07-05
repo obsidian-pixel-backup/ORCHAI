@@ -1321,7 +1321,6 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             
                 # Handle tool calls if the model requested them
                 if full_tool_calls:
-                    import json
                     current_tool_signature = json.dumps(full_tool_calls, sort_keys=True)
                     if current_tool_signature == last_tool_signature:
                         recent_identical_tool_calls += 1
@@ -1803,6 +1802,22 @@ async def websocket_endpoint(websocket: WebSocket):
                         except Exception:
                             pass
                         raise
+                    except Exception as e:
+                        import traceback
+                        traceback.print_exc()
+                        try:
+                            await manager.send_personal_message(
+                                json.dumps({
+                                    "type": "stream",
+                                    "id": f"msg-{id(p)}",
+                                    "role": "model",
+                                    "content": f"\n\n> [!ERROR]\n> **Backend Error:** {str(e)}\n",
+                                    "done": True,
+                                }),
+                                ws
+                            )
+                        except Exception:
+                            pass
 
                 current_task = asyncio.create_task(task_wrapper(payload, websocket))
 
@@ -1835,3 +1850,4 @@ async def websocket_endpoint(websocket: WebSocket):
         if current_task and not current_task.done():
             current_task.cancel()
         manager.disconnect(websocket)
+

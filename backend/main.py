@@ -131,20 +131,33 @@ async def lifespan(app: FastAPI):
     main_loop = asyncio.get_running_loop()
     
     if SENSORY_MODULES_LOADED:
-        # Initialize Sensors
-        audio_listener = AudioListener()
-        audio_listener.set_callback(on_speech_detected)
-        screen_watcher = ScreenWatcher(capture_interval=5.0)
-        
-        # Start Sensors
-        audio_listener.start()
-        screen_watcher.start()
-        
-        # Share the whisper model with the speech API to avoid loading it twice
-        if audio_listener.whisper_model:
-            set_whisper_model(audio_listener.whisper_model)
-        
-        logger.info("Sensory Inputs Started.")
+        async def init_sensors():
+            global audio_listener, screen_watcher
+            try:
+                # Initialize audio listener (which downloads/loads whisper model synchronously)
+                # We do this in a thread so it doesn't block the event loop
+                def load_audio():
+                    listener = AudioListener()
+                    listener.set_callback(on_speech_detected)
+                    return listener
+                
+                audio_listener = await asyncio.to_thread(load_audio)
+                screen_watcher = ScreenWatcher(capture_interval=5.0)
+                
+                # Start Sensors
+                audio_listener.start()
+                screen_watcher.start()
+                
+                # Share the whisper model with the speech API to avoid loading it twice
+                if audio_listener.whisper_model:
+                    set_whisper_model(audio_listener.whisper_model)
+                
+                logger.info("Sensory Inputs Started.")
+            except Exception as e:
+                logger.error(f"Failed to initialize sensors: {e}")
+
+        # Fire and forget so Uvicorn startup completes immediately
+        asyncio.create_task(init_sensors())
 
     yield
     
