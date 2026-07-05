@@ -306,7 +306,8 @@ def get_available_tools():
                     "properties": {
                         "role": {
                             "type": "string",
-                            "description": "The role of the sub-agent (e.g., 'web-researcher')."
+                            "enum": ["web-researcher"],
+                            "description": "The role of the sub-agent. Currently, MUST be exactly 'web-researcher'."
                         },
                         "task": {
                             "type": "string",
@@ -1333,13 +1334,12 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
                     if recent_identical_content >= 3:
                         error_msg = "\n\n> [!CRITICAL]\n> **System Error:** You are repeating the exact same text/code repeatedly without making progress (Psycho Loop Guard). Generation halted.\n"
-                        orch.add_message(role="assistant", content=full_content, tool_calls=full_tool_calls)
+                        orch.add_message(role="assistant", content=full_content)
                         orch.add_message(role="user", content=error_msg)
                         
                         orchestrated_messages.append({
                             "role": "assistant",
-                            "content": full_content,
-                            "tool_calls": full_tool_calls
+                            "content": full_content if full_content.strip() else " "
                         })
                         orchestrated_messages.append({
                             "role": "user",
@@ -1378,13 +1378,12 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
                     if recent_identical_tool_calls >= 3:
                         error_msg = "\n\n> [!CRITICAL]\n> **System Error:** You are repeating the exact same tool call(s) with the exact same arguments repeatedly without making progress. Please change your strategy or stop calling this tool.\n"
-                        orch.add_message(role="assistant", content=full_content, tool_calls=full_tool_calls)
+                        orch.add_message(role="assistant", content=full_content)
                         orch.add_message(role="user", content=error_msg)
                         
                         orchestrated_messages.append({
                             "role": "assistant",
-                            "content": full_content,
-                            "tool_calls": full_tool_calls
+                            "content": full_content if full_content.strip() else " "
                         })
                         orchestrated_messages.append({
                             "role": "user",

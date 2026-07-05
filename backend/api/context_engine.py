@@ -719,6 +719,17 @@ class ContextOrchestrator:
                             if msg.get("tool_call_id"):
                                 break
             safe_messages.append(msg)
+        
+        # Second Safety pass: Ensure no 'assistant' message has 'tool_calls' if not followed by a 'tool' message
+        for i, msg in enumerate(safe_messages):
+            if msg["role"] == "assistant" and msg.get("tool_calls"):
+                next_is_tool = False
+                if i + 1 < len(safe_messages) and safe_messages[i+1]["role"] == "tool":
+                    next_is_tool = True
+                if not next_is_tool:
+                    logger.warning("Stripping orphaned tool_calls from assistant message to prevent Jinja parser error.")
+                    msg.pop("tool_calls", None)
+                    
         compiled_messages = safe_messages
 
         # 4. Construct dynamic context (Time, Sensory Context, Recalled Memories) to prepend to the user's latest query (DYNAMIC SUFFIX)

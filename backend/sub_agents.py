@@ -17,7 +17,7 @@ async def delegate_to_subagent(role: str, task: str, model: str = "north-mini-co
     if role.lower() == "web-researcher":
         return await _run_web_researcher(task, model)
     else:
-        return f"Error: Unknown sub-agent role '{role}'."
+        return f"Error: Unknown sub-agent role '{role}'. The only available role is 'web-researcher'."
 
 async def _run_web_researcher(task: str, model: str) -> str:
     """Runs a specialized web-researcher agent."""
