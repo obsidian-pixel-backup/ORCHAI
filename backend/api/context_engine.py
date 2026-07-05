@@ -688,7 +688,10 @@ class ContextOrchestrator:
         # Add the active window messages (translated roles if needed)
         for msg in active:
             role = "assistant" if msg["role"] == "model" else msg["role"]
-            compiled_msg = {"role": role, "content": msg["content"]}
+            content = msg.get("content") or ""
+            if role == "assistant" and msg.get("tool_calls") and not content.strip():
+                content = " "
+            compiled_msg = {"role": role, "content": content}
             if "images" in msg and msg["images"]:
                 compiled_msg["images"] = msg["images"]
             if msg.get("tool_calls"):
@@ -704,6 +707,17 @@ class ContextOrchestrator:
                 if not safe_messages or safe_messages[-1]["role"] not in ("assistant", "tool"):
                     logger.warning("Dropping orphaned tool message to prevent Jinja parser error.")
                     continue
+                # Ensure tool_call_id is present for Ollama Jinja parser compatibility
+                if not msg.get("tool_call_id"):
+                    # Try to find the matching tool_call_id from previous assistant messages
+                    for prev_msg in reversed(safe_messages):
+                        if prev_msg["role"] == "assistant" and prev_msg.get("tool_calls"):
+                            for tc in prev_msg["tool_calls"]:
+                                if tc.get("function", {}).get("name") == msg.get("name"):
+                                    msg["tool_call_id"] = tc.get("id")
+                                    break
+                            if msg.get("tool_call_id"):
+                                break
             safe_messages.append(msg)
         compiled_messages = safe_messages
 

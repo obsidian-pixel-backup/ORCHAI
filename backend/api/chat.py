@@ -1028,6 +1028,8 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             consecutive_scaffold_iterations = 0
             recent_identical_tool_calls = 0
             last_tool_signature = None
+            recent_identical_content = 0
+            last_content_signature = None
 
             # Detect model capabilities once. Models pulled from Hugging Face and
             # small models often ship without a tool-calling or thinking template;
@@ -1037,8 +1039,9 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
             # and non-empty, so older Ollama versions keep the previous behaviour.
 
             while True:
-                if consecutive_tool_iterations > 15 or consecutive_scaffold_iterations > 5:
-                    error_msg = "\n\n> [!CRITICAL]\n> **System Error:** The model exceeded the maximum allowed autonomous iterations (Psycho Loop Guard triggered). Generation halted.\n"
+                # The hard limits are massive fallbacks. Intelligent guards check for repetitive content/tools.
+                if consecutive_tool_iterations > 100 or consecutive_scaffold_iterations > 50:
+                    error_msg = "\n\n> [!CRITICAL]\n> **System Error:** The model exceeded the maximum allowed autonomous iterations (Hard Loop Guard triggered). Generation halted.\n"
                     orch.add_message(role="assistant", content=error_msg)
                     orchestrated_messages.append({"role": "assistant", "content": error_msg})
                     await manager.send_personal_message(
@@ -1319,6 +1322,51 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                                 }
                             })
                             
+                # Check for Psycho Loop: repeating the exact same text/code
+                current_content_signature = full_content.strip()
+                if current_content_signature:
+                    if current_content_signature == last_content_signature:
+                        recent_identical_content += 1
+                    else:
+                        recent_identical_content = 0
+                        last_content_signature = current_content_signature
+
+                    if recent_identical_content >= 3:
+                        error_msg = "\n\n> [!CRITICAL]\n> **System Error:** You are repeating the exact same text/code repeatedly without making progress (Psycho Loop Guard). Generation halted.\n"
+                        orch.add_message(role="assistant", content=full_content, tool_calls=full_tool_calls)
+                        orch.add_message(role="user", content=error_msg)
+                        
+                        orchestrated_messages.append({
+                            "role": "assistant",
+                            "content": full_content,
+                            "tool_calls": full_tool_calls
+                        })
+                        orchestrated_messages.append({
+                            "role": "user",
+                            "content": error_msg
+                        })
+                        
+                        await manager.send_personal_message(
+                            json.dumps({
+                                "type": "stream",
+                                "id": msg_id,
+                                "role": "model",
+                                "content": error_msg,
+                                "done": True,
+                                "stats": {
+                                    "tokens": overall_token_count,
+                                    "content_tokens": overall_content_token_count,
+                                    "thinking_tokens": overall_thinking_token_count,
+                                    "user_input_tokens": user_input_tokens,
+                                    "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
+                                    "tokens_per_second": round(final_tps, 1) if 'final_tps' in locals() else 0,
+                                    "elapsed": round(total_time_spent_generating, 2),
+                                }
+                            }),
+                            websocket,
+                        )
+                        break
+
                 # Handle tool calls if the model requested them
                 if full_tool_calls:
                     current_tool_signature = json.dumps(full_tool_calls, sort_keys=True)
@@ -1370,7 +1418,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     
                     orchestrated_messages.append({
                         "role": "assistant",
-                        "content": full_content,
+                        "content": full_content if full_content.strip() else " ",
                         "tool_calls": full_tool_calls
                     })
                     
@@ -1383,7 +1431,8 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         orchestrated_messages.append({
                             "role": "tool",
                             "content": result_content,
-                            "name": func_name
+                            "name": func_name,
+                            "tool_call_id": tc.get("id")
                         })
 
                         display_output = str(result_content)

@@ -43,6 +43,39 @@ interface ChatInterfacePanelProps {
   onToggleAuxiliaryPane?: () => void;
 }
 
+const playModernPing = () => {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+    const ctx = new AudioContext();
+
+    const osc1 = ctx.createOscillator();
+    const osc2 = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    osc1.type = 'sine';
+    osc1.frequency.setValueAtTime(1200, ctx.currentTime);
+    
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(1200, ctx.currentTime);
+
+    gainNode.gain.setValueAtTime(0, ctx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+
+    osc1.connect(gainNode);
+    osc2.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    osc1.start(ctx.currentTime);
+    osc2.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.5);
+    osc2.stop(ctx.currentTime + 0.5);
+  } catch (e) {
+    console.warn("AudioContext not supported or blocked", e);
+  }
+};
+
 export function ChatInterfacePanel({
   chatId,
   messages,
@@ -349,6 +382,7 @@ export function ChatInterfacePanel({
               }
             }, 0);
           } else if (data.type === 'tool_approval_request') {
+            playModernPing();
             const currentId = streamingMessageIdRef.current;
             if (currentId) {
               setMessagesRef.current((prev) =>
