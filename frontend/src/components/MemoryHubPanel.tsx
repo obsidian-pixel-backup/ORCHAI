@@ -432,6 +432,9 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
           <div className="workspace-header">
             <h3>Cognitive Diagnostics & Mood</h3>
           </div>
+          {emotionalState && (
+            <pre className="world-state-content emotional-narrative">{emotionalState}</pre>
+          )}
           <div className="world-state-card emotional-state-card">
             <div className="diagnostics-summary-row">
               <div className="diag-badge-item">

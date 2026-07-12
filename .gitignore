@@ -8,10 +8,32 @@ frontend/test.zip
 **/__pycache__/
 *.pyc
 backend/orchai_memory.db
+*.db-journal
+*.sqlite
+*.sqlite3
 backend/temp_captures/
 .venv/
 venv/
 env/
+
+# Runtime-generated memory / persona state (per session)
+backend/memories/
+
+# Debug dumps, scratch outputs, and generated documents
+backend/db_dump.*
+backend/debug_messages.json
+backend/test_output.txt
+backend/Documents/
+
+# One-off scratch scripts (not real tests)
+backend/test_arr.py
+backend/test_db.py
+backend/test_db2.py
+backend/test_setup.py
+
+# Local UI test outputs (the harness ui_test.py is kept; its outputs are not)
+ui_test_report.json
+ui_test_screenshot.png
 
 # Editor/Agent folders
 .claude/

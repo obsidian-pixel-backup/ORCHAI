@@ -491,6 +491,11 @@ async def pull_model(payload: PullRequest):
                             "done": True,
                         }) + "\n"
                         return
+                    # Ollama reports progress per layer (digest), so a naive
+                    # completed/total resets 0->100 for each layer. Aggregate bytes
+                    # across all layers seen so far for a smooth overall percent.
+                    layer_total: dict = {}
+                    layer_done: dict = {}
                     async for line in res.aiter_lines():
                         if not line.strip():
                             continue
@@ -498,12 +503,21 @@ async def pull_model(payload: PullRequest):
                             evt = json.loads(line)
                         except json.JSONDecodeError:
                             continue
+                        digest = evt.get("digest")
                         total = evt.get("total")
                         completed = evt.get("completed")
-                        if total and completed is not None:
+                        if digest and total:
+                            layer_total[digest] = total
+                            layer_done[digest] = completed or 0
+                        agg_total = sum(layer_total.values())
+                        agg_done = sum(layer_done.values())
+                        if agg_total > 0:
+                            evt["percent"] = round(agg_done / agg_total * 100, 1)
+                        elif total and completed is not None:
                             evt["percent"] = round(completed / total * 100, 1)
                         if evt.get("status") == "success":
                             evt["done"] = True
+                            evt["percent"] = 100.0
                         if "error" in evt:
                             evt["done"] = True
                         yield json.dumps(evt) + "\n"

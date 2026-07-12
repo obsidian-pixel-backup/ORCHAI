@@ -6,6 +6,7 @@ import asyncio
 import sys
 import os
 import math
+import logging
 from typing import List, Dict, Any, Optional
 from api.context_engine import ContextOrchestrator, estimate_tokens
 
@@ -14,6 +15,11 @@ from api.context_engine import ContextOrchestrator, estimate_tokens
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
+
+# Module-level logger. Several code paths (auto-checkpoint, rules engine, inner
+# monologue, emotional-state VAD updates) call `logger.*`; without this they raise
+# NameError mid-generation and every chat turn fails with a backend error.
+logger = logging.getLogger("orchai.chat")
 
 router = APIRouter()
 

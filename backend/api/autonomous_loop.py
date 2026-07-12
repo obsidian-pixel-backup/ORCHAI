@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import json
+import os
 import httpx
 import time
 from api.chat import manager, orchestrators, OLLAMA_BASE_URL
@@ -11,7 +12,14 @@ async def autonomous_background_task():
     """
     A background loop that periodically gives ORCHAI autonomous agency
     to reflect on its state, environment, and initiate conversation.
+
+    This drives the "sentience" behaviour (unprompted reflection). It is enabled
+    by default but can be turned off with ORCHAI_ENABLE_AUTONOMY=0 (e.g. to avoid
+    unsolicited model calls / GPU usage).
     """
+    if os.getenv("ORCHAI_ENABLE_AUTONOMY", "1") != "1":
+        logger.info("Autonomous loop disabled (set ORCHAI_ENABLE_AUTONOMY=1 to enable).")
+        return
     logger.info("Autonomous goal formation and reflection loop started.")
     while True:
         await asyncio.sleep(60)  # Check every minute
@@ -33,6 +41,11 @@ async def autonomous_background_task():
                     continue
                     
                 last_msg_time = orch.messages[-1].get("timestamp", 0)
+                # Without a reliable timestamp, `time.time() - 0` is a huge number
+                # and the session would look permanently idle → the loop would fire
+                # unsolicited every cycle. Skip sessions we can't age.
+                if not last_msg_time:
+                    continue
                 time_since_interaction = time.time() - last_msg_time
                 
                 # If idle for more than 5 minutes (300 seconds), wake up
@@ -103,7 +116,6 @@ async def autonomous_background_task():
                         from cluster_manager import cluster_manager
                         await cluster_manager.ensure_running(gguf_path)
                         
-                        import os
                         base_url = os.getenv("HYPERSPACE_URL", "http://127.0.0.1:8081")
                         url = f"{base_url}/v1/chat/completions"
                     else:
@@ -147,7 +159,6 @@ async def autonomous_background_task():
                             
                             # Write thought to markdown file
                             try:
-                                import os
                                 memory_dir = os.path.join(os.getcwd(), "memories", session_id)
                                 os.makedirs(memory_dir, exist_ok=True)
                                 md_path = os.path.abspath(os.path.join(memory_dir, "thoughts.md"))
@@ -176,10 +187,6 @@ async def autonomous_background_task():
                                     await manager.send_personal_message(json.dumps(toast_msg), ws)
             except Exception as e:
                 logger.error(f"Error in autonomous loop for session {session_id}: {e}")
-
-import os
-import json
-import time
 
 
 async def _load_recent_waking_thoughts(session_id: str, n: int = 3) -> list:

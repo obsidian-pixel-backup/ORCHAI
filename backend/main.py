@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
+import os
 import sys
 import asyncio
 from api.chat import router as chat_router, manager
@@ -125,10 +126,26 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger("orchai")
     logger.info("ORCHAI Backend starting up...")
     
-    # Import and start our new Distributed Inference Cluster Manager
-    from cluster_manager import cluster_manager
-    asyncio.create_task(cluster_manager.start_distributed_cluster())
-    
+    # Import and start our optional Distributed Inference Cluster Manager.
+    # This is an advanced, opt-in feature (needs paramiko + a configured worker).
+    # It must NEVER take the whole backend down: guard the import AND the task so a
+    # missing dependency or misconfiguration degrades gracefully to local-only.
+    if os.getenv("ORCHAI_ENABLE_CLUSTER", "0") == "1":
+        try:
+            from cluster_manager import cluster_manager
+
+            async def _start_cluster_safe():
+                try:
+                    await cluster_manager.start_distributed_cluster()
+                except Exception as e:
+                    logger.warning(f"Distributed cluster failed to start (running local-only): {e}")
+
+            asyncio.create_task(_start_cluster_safe())
+        except Exception as e:
+            logger.warning(f"Distributed cluster unavailable (running local-only): {e}")
+    else:
+        logger.info("Distributed cluster disabled (set ORCHAI_ENABLE_CLUSTER=1 to enable).")
+
     # Internal fallback to ensure Ollama is running (legacy support)
     ensure_ollama_running()
     global audio_listener, screen_watcher, main_loop

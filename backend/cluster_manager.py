@@ -1,9 +1,9 @@
 import logging
 import os
+import ssl
 import asyncio
 import subprocess
 import platform
-import urllib.request
 import zipfile
 import paramiko
 import time
@@ -13,6 +13,15 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Verify HTTPS downloads against the OS trust store when possible. On Windows this
+# picks up corporate/AV TLS-interception root CAs that certifi lacks, which
+# otherwise cause CERTIFICATE_VERIFY_FAILED when fetching the llama.cpp release.
+try:
+    import truststore
+    _DL_SSL = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+except Exception:
+    _DL_SSL = True
 
 DEBIAN_HOST = "192.168.0.102"
 DEBIAN_USER = "debian"
@@ -118,17 +127,25 @@ class ClusterManager:
         zip_path = self.windows_bin_dir / "llama-windows.zip"
         cudart_zip_path = self.windows_bin_dir / "cudart-windows.zip"
         
+        def _fetch(url, dest):
+            # Stream to disk, verifying TLS against the OS trust store (_DL_SSL).
+            with httpx.stream("GET", url, verify=_DL_SSL, follow_redirects=True, timeout=None) as r:
+                r.raise_for_status()
+                with open(dest, "wb") as f:
+                    for chunk in r.iter_bytes():
+                        f.write(chunk)
+
         def download():
-            urllib.request.urlretrieve(LLAMA_WINDOWS_URL, zip_path)
+            _fetch(LLAMA_WINDOWS_URL, zip_path)
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(self.windows_bin_dir)
             zip_path.unlink()
-            
-            urllib.request.urlretrieve(LLAMA_WINDOWS_CUDART_URL, cudart_zip_path)
+
+            _fetch(LLAMA_WINDOWS_CUDART_URL, cudart_zip_path)
             with zipfile.ZipFile(cudart_zip_path, 'r') as zip_ref:
                 zip_ref.extractall(self.windows_bin_dir)
             cudart_zip_path.unlink()
-            
+
         await asyncio.to_thread(download)
         logging.info("Windows llama-server (CUDA) download complete.")
         return True
@@ -201,7 +218,7 @@ echo "COMPILE_DONE"
                     ssh.exec_command(f"cp {bin_path} ~/.orchai/bin/llama-rpc-server")
                     ssh.exec_command(f"echo '{LLAMA_CPP_VERSION}' > {DEBIAN_VERSION_STAMP}")
                 else:
-                    logging.info(f"Failed to compile Debian worker.\nSTDOUT: {compile_out}\nSTDERR: {compile_err}")
+                    logging.info(f"Failed to compile Debian worker.\nSTDOUT: {compile_output}\nSTDERR: {compile_err}")
                     return False
             else:
                 logging.info(f"Debian worker binary is up to date (version {LLAMA_CPP_VERSION}).")

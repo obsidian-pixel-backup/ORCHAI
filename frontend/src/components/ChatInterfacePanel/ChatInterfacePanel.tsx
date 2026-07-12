@@ -10,6 +10,7 @@ export interface Message {
   images?: string[];
   documents?: { name: string; content: string }[];
   thinking?: string;
+  monologue?: string;
   stats?: {
     tokens_per_second: number;
     tokens: number;

@@ -361,9 +361,25 @@ function AppContent() {
               role: msg.role === 'assistant' ? 'model' : msg.role
             }));
             setChats((prev) =>
-              prev.map((c) =>
-                c.id === activeChatId ? { ...c, messages: mappedMessages } : c
-              )
+              prev.map((c) => {
+                if (c.id !== activeChatId) return c;
+                // Keep the local messages as the source of truth — they carry
+                // frontend-only fields (toolExecutions, images, documents, monologue,
+                // toolApprovalRequest) that power the Auxiliary Pane's artifacts/
+                // files/diffs view and are NOT persisted by the backend. A blind
+                // replace wiped those. The backend/frontend use different message-id
+                // schemes, so we can't match on id reliably; instead we append only
+                // backend messages whose (role + content) isn't already shown locally
+                // — i.e. messages added while the app was closed (autonomous thoughts).
+                const keyOf = (m: { role?: string; content?: string }) =>
+                  `${m.role === 'assistant' ? 'model' : m.role}|${(m.content || '').trim().slice(0, 200)}`;
+                const localKeys = new Set(c.messages.map(keyOf));
+                const newMessages = mappedMessages.filter(
+                  (bm: Message) => (bm.content || '').trim().length > 0 && !localKeys.has(keyOf(bm))
+                );
+                if (newMessages.length === 0) return c;
+                return { ...c, messages: [...c.messages, ...newMessages] };
+              })
             );
           }
         } else if (!res.ok && active) {
@@ -492,6 +508,28 @@ function AppContent() {
     setChats((prev) => [...prev, newChat]);
     setActiveChatId(newId);
   };
+
+  // Wire the Electron application menu (File → New Chat / Model Library / Settings,
+  // View → Toggle Theme) to the app. No-op in a plain browser (no electron require).
+  useEffect(() => {
+    let ipc: any;
+    try { ipc = (window as any).require?.('electron')?.ipcRenderer; } catch { ipc = null; }
+    if (!ipc) return;
+    const onNewChat = () => handleNewChat();
+    const onSettings = () => setShowSettingsModal(true);
+    const onLibrary = () => setShowModelLibrary(true);
+    const onTheme = () => setIsDarkTheme((prev) => !prev);
+    ipc.on('menu:new-chat', onNewChat);
+    ipc.on('menu:open-settings', onSettings);
+    ipc.on('menu:open-model-library', onLibrary);
+    ipc.on('menu:toggle-theme', onTheme);
+    return () => {
+      ipc.removeListener('menu:new-chat', onNewChat);
+      ipc.removeListener('menu:open-settings', onSettings);
+      ipc.removeListener('menu:open-model-library', onLibrary);
+      ipc.removeListener('menu:toggle-theme', onTheme);
+    };
+  }, [handleNewChat]);
 
   const handleDeleteChat = async (id: string) => {
     try {
