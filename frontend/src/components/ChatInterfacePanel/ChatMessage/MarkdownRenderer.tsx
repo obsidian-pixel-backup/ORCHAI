@@ -12,8 +12,10 @@ interface CodeBlockCardProps {
 
 export function CodeBlockCard({ code, language }: CodeBlockCardProps) {
   const [copied, setCopied] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
-  const handleCopy = async () => {
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
@@ -24,9 +26,14 @@ export function CodeBlockCard({ code, language }: CodeBlockCardProps) {
   };
 
   return (
-    <div className="code-block-card">
-      <div className="code-block-header">
-        <span className="code-block-lang">{language}</span>
+    <div className={`code-block-card ${expanded ? 'expanded' : 'collapsed'}`}>
+      <div className="code-block-header clickable" onClick={() => setExpanded(!expanded)}>
+        <span className="code-block-lang" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <svg className={`collapse-chevron ${expanded ? 'expanded' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+          <span>{language}</span>
+        </span>
         <button className="code-block-copy-btn" onClick={handleCopy} aria-label="Copy code block">
           {copied ? (
             <>
@@ -46,40 +53,73 @@ export function CodeBlockCard({ code, language }: CodeBlockCardProps) {
           )}
         </button>
       </div>
-      <div className="code-block-body">
-        <pre>
-          <code>{code}</code>
-        </pre>
-      </div>
+      {expanded && (
+        <div className="code-block-body">
+          <pre>
+            <code>{code}</code>
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
 
 export function ToolExecutionCard({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(false);
   
   let data;
   try {
     data = JSON.parse(code);
   } catch(e) {
-    return <div className="tool-execution-card error">Invalid tool execution data</div>;
+    return <div className="code-block-card error">Invalid tool execution data</div>;
   }
 
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const copyText = `Tool Executed: ${data.name}\n\nInput:\n${JSON.stringify(data.input, null, 2)}\n\nOutput:\n${data.output}`;
+      await navigator.clipboard.writeText(copyText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy: ', err);
+    }
+  };
+
   return (
-    <div className="tool-execution-card">
-      <div className="tool-execution-header" onClick={() => setExpanded(!expanded)}>
-        <span className="tool-execution-title">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className={`code-block-card tool-execution-card ${expanded ? 'expanded' : 'collapsed'}`}>
+      <div className="code-block-header clickable" onClick={() => setExpanded(!expanded)}>
+        <span className="code-block-lang" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <svg className={`collapse-chevron ${expanded ? 'expanded' : ''}`} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: '4px' }}>
             <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
           </svg>
-          Tool Executed: <strong>{data.name}</strong>
+          <span>TOOL: {data.name}</span>
         </span>
-        <svg className={`tool-chevron ${expanded ? 'expanded' : ''}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
+        <button className="code-block-copy-btn" onClick={handleCopy} aria-label="Copy tool execution details">
+          {copied ? (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="copy-icon-success">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              <span className="copy-success-text">Copied!</span>
+            </>
+          ) : (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copy</span>
+            </>
+          )}
+        </button>
       </div>
       {expanded && (
-        <div className="tool-execution-body">
+        <div className="tool-execution-body-new">
           <div className="tool-section">
             <div className="tool-section-label">Input:</div>
             <pre className="tool-code-block">{JSON.stringify(data.input, null, 2)}</pre>

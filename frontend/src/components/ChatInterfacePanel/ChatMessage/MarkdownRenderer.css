@@ -271,11 +271,6 @@
 
 /* Tool Execution Card */
 .tool-execution-card {
-  border: 1px solid var(--tool-card-border);
-  border-radius: 7px;
-  background-color: var(--tool-card-bg);
-  margin: 12px 0;
-  overflow: hidden;
   transition: all 0.2s ease;
 }
 
@@ -285,47 +280,10 @@
   font-weight: 500;
 }
 
-.tool-execution-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 14px;
-  cursor: pointer;
-  background-color: var(--tool-header-bg);
-  user-select: none;
-}
-
-.tool-execution-header:hover {
-  background-color: var(--hover-bg);
-}
-
-.tool-execution-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.9rem;
-  color: var(--text-primary);
-}
-
-.tool-execution-title strong {
-  color: var(--accent-color);
-  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Monaco, Consolas, monospace;
-  font-weight: 600;
-}
-
-.tool-chevron {
-  color: var(--text-secondary);
-  transition: transform 0.2s ease;
-}
-
-.tool-chevron.expanded {
-  transform: rotate(180deg);
-}
-
-.tool-execution-body {
-  padding: 14px;
-  border-top: 1px solid var(--tool-card-border);
-  background-color: var(--tool-body-bg);
+.tool-execution-body-new {
+  padding: 56px 16px 16px 16px;
+  margin-top: -40px;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -348,8 +306,8 @@
 .tool-code-block {
   margin: 0;
   padding: 10px 12px;
-  background-color: var(--code-bg);
-  border: 1px solid var(--tool-card-border);
+  background-color: var(--tool-body-bg);
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Monaco, Consolas, monospace;
   font-size: 0.8rem;
@@ -357,4 +315,31 @@
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-all;
+}
+
+/* Expandable/Collapsible States */
+.code-block-card.collapsed {
+  max-height: fit-content;
+  overflow: hidden;
+}
+
+.code-block-card.collapsed .code-block-header {
+  border-bottom: none;
+}
+
+.code-block-header.clickable {
+  cursor: pointer;
+}
+
+.code-block-header.clickable:hover {
+  background: var(--hover-bg);
+}
+
+.collapse-chevron {
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+}
+
+.collapse-chevron.expanded {
+  transform: rotate(180deg);
 }

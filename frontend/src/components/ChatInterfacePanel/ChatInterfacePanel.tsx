@@ -5,7 +5,7 @@ import { ChatInput } from './ChatInput/ChatInput';
 
 export interface Message {
   id: string;
-  role: 'user' | 'model';
+  role: 'user' | 'model' | 'assistant';
   content: string;
   images?: string[];
   documents?: { name: string; content: string }[];
@@ -834,7 +834,7 @@ export function ChatInterfacePanel({
                   const isActive = msg.id === activeResponseId || (activeResponseId === null && msg.id === messages[messages.length - 1]?.id);
 
                   let cleanContent = msg.content;
-                  if (msg.role === 'model') {
+                  if (msg.role === 'model' || msg.role === 'assistant') {
                     const thinkEndTag = '</think>';
                     const endIdx = msg.content.indexOf(thinkEndTag);
                     if (endIdx !== -1) {
@@ -852,7 +852,7 @@ export function ChatInterfacePanel({
                   return (
                     <div key={msg.id} className="navigator-item-wrapper">
                       <button
-                        className={`navigator-dot ${msg.role} ${isActive ? 'active' : ''}`}
+                        className={`navigator-dot ${msg.role === 'user' ? 'user' : 'model'} ${isActive ? 'active' : ''}`}
                         onClick={() => scrollToResponse(msg.id)}
                         aria-label={`Jump to ${msg.role === 'user' ? 'Message' : 'Response'}`}
                       />

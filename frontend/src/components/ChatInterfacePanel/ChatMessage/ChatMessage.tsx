@@ -5,7 +5,7 @@ import './ChatMessage.css';
 
 interface ChatMessageProps {
   id: string;
-  role: 'user' | 'model';
+  role: 'user' | 'model' | 'assistant';
   content: string;
   images?: string[];
   documents?: { name: string; content: string }[];
@@ -139,7 +139,7 @@ export function ChatMessage({
   id, role, content, images, documents, stats,
   toolApprovalRequest, onEdit, onBranch, onApproveTool
 }: ChatMessageProps) {
-  const isModel = role === 'model';
+  const isModel = role === 'model' || role === 'assistant';
   const chronologicalBlocks = isModel ? parseChronologicalBlocks(content) : [{ type: 'text' as const, content, isThinkingActive: false }];
 
   const dialog = useDialog();

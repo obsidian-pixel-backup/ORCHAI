@@ -309,7 +309,14 @@ function AppContent() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          // Map 'assistant' to 'model' for compatibility
+          return parsed.map((chat: ChatSession) => ({
+            ...chat,
+            messages: chat.messages.map((msg) => ({
+              ...msg,
+              role: msg.role === 'assistant' ? 'model' : msg.role
+            }))
+          }));
         }
       } catch (e) {
         console.error('Failed to parse chats from localStorage', e);
@@ -338,25 +345,46 @@ function AppContent() {
   // Fetch messages from backend for active chat to sync dynamic/offline messages (like autonomous thoughts)
   useEffect(() => {
     let active = true;
+    let attempt = 1;
+    const MAX_ATTEMPTS = 10;
+    const RETRY_INTERVAL = 1000;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
     const syncMessages = async () => {
       try {
         const res = await fetch(`http://127.0.0.1:8000/api/chat/session/${activeChatId}/messages`);
         if (res.ok && active) {
           const data = await res.json();
           if (data.messages && data.messages.length > 0) {
+            const mappedMessages = data.messages.map((msg: any) => ({
+              ...msg,
+              role: msg.role === 'assistant' ? 'model' : msg.role
+            }));
             setChats((prev) =>
               prev.map((c) =>
-                c.id === activeChatId ? { ...c, messages: data.messages } : c
+                c.id === activeChatId ? { ...c, messages: mappedMessages } : c
               )
             );
           }
+        } else if (!res.ok && active) {
+          throw new Error(`HTTP error ${res.status}`);
         }
       } catch (err) {
-        console.error('Failed to sync messages with backend:', err);
+        if (active) {
+          if (attempt < MAX_ATTEMPTS) {
+            attempt += 1;
+            timeoutId = setTimeout(syncMessages, RETRY_INTERVAL);
+          } else {
+            console.error('Failed to sync messages with backend after max retries:', err);
+          }
+        }
       }
     };
     syncMessages();
-    return () => { active = false; };
+    return () => {
+      active = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [activeChatId]);
 
   // Find active chat details
@@ -387,7 +415,7 @@ function AppContent() {
       const userMessages = activeChat.messages.filter((m) => m.role === 'user');
       const lastMessage = activeChat.messages[activeChat.messages.length - 1];
 
-      if (userMessages.length === 1 && lastMessage.role === 'model' && lastMessage.stats?.model) {
+      if (userMessages.length === 1 && (lastMessage.role === 'model' || lastMessage.role === 'assistant') && lastMessage.stats?.model) {
         const firstMsgContent = userMessages[0].content;
 
         setChats((prevChats) =>

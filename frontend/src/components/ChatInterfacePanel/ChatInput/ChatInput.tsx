@@ -36,18 +36,36 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration, sendOn
 
   useEffect(() => {
     let cancelled = false;
-    fetch('http://127.0.0.1:8000/api/chat/skills')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!cancelled && data?.skills?.length) {
-          setSkills(data.skills);
-        }
-      })
-      .catch(() => {
-        /* keep fallback skills */
-      });
+    let attempt = 1;
+    const MAX_ATTEMPTS = 10;
+    const RETRY_INTERVAL = 1000;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const fetchSkills = () => {
+      fetch('http://127.0.0.1:8000/api/chat/skills')
+        .then((res) => {
+          if (!res.ok) throw new Error('Not ok');
+          return res.json();
+        })
+        .then((data) => {
+          if (!cancelled && data?.skills?.length) {
+            setSkills(data.skills);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            if (attempt < MAX_ATTEMPTS) {
+              attempt += 1;
+              timeoutId = setTimeout(fetchSkills, RETRY_INTERVAL);
+            }
+          }
+        });
+    };
+
+    fetchSkills();
     return () => {
       cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, []);
 
