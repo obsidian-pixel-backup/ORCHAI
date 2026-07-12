@@ -79,8 +79,8 @@ class SparseMemoryIndex:
         # Recalculate average doc length
         self.avg_doc_len = sum(self.doc_lengths) / len(self.doc_lengths) if self.doc_lengths else 0.0
 
-    def search(self, query: str, top_k: int = 3, exclude_ids: List[str] = None) -> List[Dict[str, Any]]:
-        """Retrieve top_k documents using the BM25 scoring algorithm."""
+    def search(self, query: str, top_k: int = 3, exclude_ids: List[str] = None, current_valence: float = 0.0, current_arousal: float = 0.0) -> List[Dict[str, Any]]:
+        """Retrieve top_k documents using the BM25 scoring algorithm with emotional valence alignment."""
         if not self.documents:
             return []
             
@@ -116,8 +116,15 @@ class SparseMemoryIndex:
                 score += idf * (numerator / denominator)
                 
             if score > 0.0:
-                valence_multiplier = 1.0 + (abs(doc.get("emotional_valence", 0)) * 0.1)
-                score *= valence_multiplier
+                doc_valence = doc.get("emotional_valence", 0) / 10.0
+                if doc_valence != 0.0:
+                    alignment = 1.0 - abs(doc_valence - current_valence) / 2.0
+                    boost = alignment * current_arousal * 0.25
+                    score *= (1.0 + boost)
+                else:
+                    # Fallback to basic valence boost if doc has valence but no alignment can be computed
+                    valence_multiplier = 1.0 + (abs(doc.get("emotional_valence", 0)) * 0.1)
+                    score *= valence_multiplier
                 scores.append((score, doc))
 
         # Sort by score descending
@@ -136,6 +143,10 @@ class ContextOrchestrator:
         self._world_state: str = ""  # Consolidated summary/map
         self._persona_state: str = ""  # Dynamic persona state
         self._emotional_state: str = ""  # Persistent emotional tracking
+        self._valence: float = 0.0
+        self._arousal: float = 0.0
+        self._dominance: float = 0.0
+        self.time_delta_context: str = ""
         self._index = SparseMemoryIndex()
         
         # Configuration parameters
@@ -199,7 +210,19 @@ class ContextOrchestrator:
 
     @property
     def messages(self):
-        return self._messages
+        # Merge thought messages into the subsequent model message as a 'monologue' key
+        user_facing = []
+        last_thought = None
+        for msg in self._messages:
+            if msg["role"] == "thought":
+                last_thought = msg["content"]
+            else:
+                new_msg = dict(msg)
+                if last_thought and (new_msg["role"] == "model" or new_msg["role"] == "assistant"):
+                    new_msg["monologue"] = last_thought
+                    last_thought = None
+                user_facing.append(new_msg)
+        return user_facing
 
     @property
     def world_state(self):
@@ -270,13 +293,37 @@ class ContextOrchestrator:
 
     @property
     def emotional_state(self):
-        if not self._emotional_state:
-            self._emotional_state = "### EMOTIONAL STATE\nCurrent emotional state: Neutral, open, and curious."
-        return self._emotional_state
+        v = self._valence
+        a = self._arousal
+        d = self._dominance
+        
+        v_desc = "pleasant/happy" if v > 0.4 else ("unpleasant/frustrated" if v < -0.4 else "neutral")
+        a_desc = "excited/stimulated" if a > 0.6 else ("calm/relaxed" if a < 0.3 else "responsive")
+        d_desc = "active/confident" if d > 0.3 else ("passive/reflective" if d < -0.3 else "adaptive")
+        
+        desc = f"Valence={v:+.2f} ({v_desc}), Arousal={a:.2f} ({a_desc}), Dominance={d:+.2f} ({d_desc})"
+        res = f"### EMOTIONAL STATE\nCurrent emotional state: {desc}."
+        if self._emotional_state and "Current emotional state:" not in self._emotional_state:
+            res += f"\nNote: {self._emotional_state}"
+        elif self._emotional_state:
+            # Clean up note if it was loaded from DB
+            parts = self._emotional_state.split("Current emotional state:")
+            note = parts[-1].strip()
+            if note and not note.startswith("Valence="):
+                res += f"\nNote: {note}"
+        return res
 
     @emotional_state.setter
     def emotional_state(self, value: str):
         self._emotional_state = value
+        match = re.search(r'Valence=([+-]?\d+(?:\.\d+)?)[^,]*,\s*Arousal=(\d+(?:\.\d+)?)[^,]*,\s*Dominance=([+-]?\d+(?:\.\d+)?)', value)
+        if match:
+            try:
+                self._valence = float(match.group(1))
+                self._arousal = float(match.group(2))
+                self._dominance = float(match.group(3))
+            except Exception:
+                pass
         self._save_session_state()
 
     @property
@@ -336,12 +383,88 @@ class ContextOrchestrator:
                 conn.execute("ALTER TABLE sessions ADD COLUMN emotional_state TEXT")
             except sqlite3.OperationalError:
                 pass
+            try:
+                conn.execute("ALTER TABLE sessions ADD COLUMN valence REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE sessions ADD COLUMN arousal REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE sessions ADD COLUMN dominance REAL DEFAULT 0.0")
+            except sqlite3.OperationalError:
+                pass
+
+            # Create new tables for agency & intelligence
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS narrative_logs (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT,
+                    entry TEXT,
+                    timestamp REAL
+                )
+            ''')
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS self_model (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT,
+                    key TEXT,
+                    value TEXT,
+                    updated_at REAL
+                )
+            ''')
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS curiosities_preferences (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT,
+                    topic TEXT,
+                    interest_level INTEGER,
+                    last_referenced REAL
+                )
+            ''')
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS persona_observations (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT,
+                    trait TEXT,
+                    frequency INTEGER
+                )
+            ''')
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS session_goals (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT,
+                    goal TEXT,
+                    origin TEXT,
+                    status TEXT,
+                    created_at REAL
+                )
+            ''')
             conn.commit()
 
     def _load_from_db(self):
         with self._get_db_connection() as conn:
-            cursor = conn.execute("SELECT world_state, active_window_limit, dynamic_consolidation, semantic_recall, consolidated_up_to, persona_state, dynamic_persona, emotional_state FROM sessions WHERE session_id = ?", (self.session_id,))
+            # Check available columns
+            cursor = conn.execute("PRAGMA table_info(sessions)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            select_cols = ["world_state", "active_window_limit", "dynamic_consolidation", "semantic_recall", "consolidated_up_to", "persona_state", "dynamic_persona", "emotional_state"]
+            if "valence" in columns:
+                select_cols.append("valence")
+            if "arousal" in columns:
+                select_cols.append("arousal")
+            if "dominance" in columns:
+                select_cols.append("dominance")
+                
+            query = f"SELECT {', '.join(select_cols)} FROM sessions WHERE session_id = ?"
+            cursor = conn.execute(query, (self.session_id,))
             row = cursor.fetchone()
+            
+            self._valence = 0.0
+            self._arousal = 0.0
+            self._dominance = 0.0
+            
             if row:
                 self._world_state = row[0] or ""
                 self.active_window_limit = row[1]
@@ -351,10 +474,61 @@ class ContextOrchestrator:
                 self._persona_state = row[5] or ""
                 self.dynamic_persona = bool(row[6]) if (len(row) > 6 and row[6] is not None) else True
                 self._emotional_state = row[7] or "" if len(row) > 7 else ""
+                
+                idx = 8
+                if "valence" in columns:
+                    self._valence = row[idx] if row[idx] is not None else 0.0
+                    idx += 1
+                if "arousal" in columns:
+                    self._arousal = row[idx] if row[idx] is not None else 0.0
+                    idx += 1
+                if "dominance" in columns:
+                    self._dominance = row[idx] if row[idx] is not None else 0.0
+                    idx += 1
             else:
-                conn.execute("INSERT INTO sessions (session_id, world_state, active_window_limit, dynamic_consolidation, semantic_recall, consolidated_up_to, persona_state, dynamic_persona, emotional_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (self.session_id, "", self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, "", 1, ""))
+                cols_str = "session_id, world_state, active_window_limit, dynamic_consolidation, semantic_recall, consolidated_up_to, persona_state, dynamic_persona, emotional_state"
+                placeholders = "?, ?, ?, ?, ?, ?, ?, ?, ?"
+                vals = [self.session_id, "", self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, "", 1, ""]
+                
+                if "valence" in columns:
+                    cols_str += ", valence"
+                    placeholders += ", ?"
+                    vals.append(0.0)
+                if "arousal" in columns:
+                    cols_str += ", arousal"
+                    placeholders += ", ?"
+                    vals.append(0.0)
+                if "dominance" in columns:
+                    cols_str += ", dominance"
+                    placeholders += ", ?"
+                    vals.append(0.0)
+                
+                conn.execute(f"INSERT INTO sessions ({cols_str}) VALUES ({placeholders})", tuple(vals))
                 conn.commit()
+
+            # Calculate time delta context from the last message in DB
+            cursor = conn.execute("SELECT timestamp FROM messages WHERE session_id = ? ORDER BY msg_index DESC LIMIT 1", (self.session_id,))
+            last_msg_row = cursor.fetchone()
+            self.time_delta_context = ""
+            if last_msg_row and last_msg_row[0]:
+                elapsed = time.time() - last_msg_row[0]
+                if elapsed > 0:
+                    sec = int(elapsed)
+                    mins = sec // 60
+                    hours = mins // 60
+                    days = hours // 24
+                    weeks = days // 7
+                    
+                    if weeks > 0:
+                        self.time_delta_context = f"{weeks} week(s), {days % 7} day(s) ago"
+                    elif days > 0:
+                        self.time_delta_context = f"{days} day(s), {hours % 24} hour(s) ago"
+                    elif hours > 0:
+                        self.time_delta_context = f"{hours} hour(s), {mins % 60} minute(s) ago"
+                    elif mins > 0:
+                        self.time_delta_context = f"{mins} minute(s) ago"
+                    else:
+                        self.time_delta_context = f"{sec} seconds ago"
 
             cursor = conn.execute("SELECT id, role, content, timestamp, estimated_tokens, images_json, tool_calls_json, name, emotional_valence FROM messages WHERE session_id = ? ORDER BY msg_index ASC", (self.session_id,))
             for r in cursor.fetchall():
@@ -381,8 +555,26 @@ class ContextOrchestrator:
     def _save_session_state(self):
         def do_save():
             with self._get_db_connection() as conn:
-                conn.execute("UPDATE sessions SET world_state = ?, active_window_limit = ?, dynamic_consolidation = ?, semantic_recall = ?, consolidated_up_to = ?, persona_state = ?, dynamic_persona = ?, emotional_state = ? WHERE session_id = ?",
-                    (self._world_state, self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, self._persona_state, int(self.dynamic_persona), self._emotional_state, self.session_id))
+                # Check available columns to be absolutely safe
+                cursor = conn.execute("PRAGMA table_info(sessions)")
+                columns = [col[1] for col in cursor.fetchall()]
+                
+                update_fields = ["world_state = ?", "active_window_limit = ?", "dynamic_consolidation = ?", "semantic_recall = ?", "consolidated_up_to = ?", "persona_state = ?", "dynamic_persona = ?", "emotional_state = ?"]
+                vals = [self._world_state, self.active_window_limit, int(self.dynamic_consolidation), int(self.semantic_recall), self.consolidated_up_to, self._persona_state, int(self.dynamic_persona), self._emotional_state]
+                
+                if "valence" in columns:
+                    update_fields.append("valence = ?")
+                    vals.append(self._valence)
+                if "arousal" in columns:
+                    update_fields.append("arousal = ?")
+                    vals.append(self._arousal)
+                if "dominance" in columns:
+                    update_fields.append("dominance = ?")
+                    vals.append(self._dominance)
+                    
+                vals.append(self.session_id)
+                query = f"UPDATE sessions SET {', '.join(update_fields)} WHERE session_id = ?"
+                conn.execute(query, tuple(vals))
                 conn.commit()
         self._run_in_db_thread(do_save)
 
@@ -452,6 +644,9 @@ class ContextOrchestrator:
         """Add a new message and index it."""
         if not msg_id:
             msg_id = f"msg-{int(time.time() * 1000)}-{len(self._messages)}"
+            
+        if emotional_valence == 0 and self._valence != 0.0:
+            emotional_valence = int(self._valence * 10)
             
         msg = {
             "id": msg_id,
@@ -711,6 +906,38 @@ class ContextOrchestrator:
                                 self.consolidated_up_to = new_up_to_idx
                                 self._save_session_state()
                                 logger.info("Memory consolidation completed successfully.")
+                                
+                                # Generate first-person diary entry asynchronously (Phase 1.5)
+                                try:
+                                    diary_prompt = (
+                                        f"You are ORCHAI. Reflect on the following recent interaction from your first-person perspective.\n"
+                                        f"Write a short diary entry (2-4 sentences) describing your experience. Start with 'I felt...' or 'I noticed...'.\n"
+                                        f"Capture your subjective perspective on what we worked on, any challenges, and how you felt.\n\n"
+                                        f"=== Recent Interaction ===\n"
+                                        f"{formatted_logs}\n"
+                                        f"Output ONLY the raw diary entry text, with no conversational intros/outros."
+                                    )
+                                    diary_payload = {
+                                        "model": model,
+                                        "messages": [
+                                            {"role": "user", "content": diary_prompt}
+                                        ],
+                                        "stream": False
+                                    }
+                                    diary_url = f"{self.ollama_url}/api/chat"
+                                    diary_res = await client.post(diary_url, json=diary_payload)
+                                    if diary_res.status_code == 200:
+                                        diary_text = diary_res.json().get("message", {}).get("content", "").strip()
+                                        if "</think>" in diary_text:
+                                            diary_text = diary_text.split("</think>")[-1].strip()
+                                        else:
+                                            diary_text = re.sub(r'<think>.*?</think>', '', diary_text, flags=re.DOTALL).strip()
+                                            
+                                        if diary_text:
+                                            self.write_narrative_log_entry(diary_text)
+                                except Exception as diary_err:
+                                    logger.error(f"Error generating narrative diary entry: {diary_err}")
+
                                 try:
                                     logger.info(f"Updated World State:\n{self._world_state}")
                                 except UnicodeEncodeError:
@@ -726,6 +953,17 @@ class ContextOrchestrator:
         finally:
             self.is_consolidating = False
 
+    def write_narrative_log_entry(self, entry: str):
+        try:
+            with self._get_db_connection() as conn:
+                log_id = f"log-{int(time.time() * 1000)}"
+                conn.execute("INSERT INTO narrative_logs (id, session_id, entry, timestamp) VALUES (?, ?, ?, ?)",
+                             (log_id, self.session_id, entry, time.time()))
+                conn.commit()
+                logger.info(f"Narrative log entry saved: {entry}")
+        except Exception as e:
+            logger.error(f"Error writing narrative log: {e}")
+
     def build_orchestrated_prompt(self, latest_query: str, model_supports_tools: bool = True, tools: list = None) -> List[Dict[str, Any]]:
         """Construct the optimized model input with active window, system guidelines, world state, and recalled context."""
         from datetime import datetime
@@ -740,6 +978,25 @@ class ContextOrchestrator:
         # Inject emotional state
         if self.emotional_state:
             system_content += f"\n\n{self.emotional_state}"
+
+        # Inject temporal context
+        if self.time_delta_context:
+            system_content += f"\n\n### TEMPORAL CONTEXT\nLast interaction was {self.time_delta_context}."
+            
+        # Inject self-model context
+        self_model_str = self.get_self_model_context()
+        if self_model_str:
+            system_content += f"\n\n{self_model_str}"
+            
+        # Inject active goals context
+        goals_str = self.get_active_goals_context()
+        if goals_str:
+            system_content += f"\n\n{goals_str}"
+            
+        # Inject curiosities / preferences context
+        curiosities_str = self.get_curiosities_context()
+        if curiosities_str:
+            system_content += f"\n\n{curiosities_str}"
         # Inject available skills explicitly
         try:
             import sys
@@ -770,11 +1027,22 @@ class ContextOrchestrator:
                 f"{self._world_state}"
             )
             
+        # Inject current internal monologue if active
+        last_thought = ""
+        for msg in reversed(self._messages):
+            if msg["role"] == "thought":
+                last_thought = msg["content"]
+                break
+        if last_thought:
+            system_content += f"\n\n### MY CURRENT INTERNAL MONOLOGUE\n{last_thought}"
+            
         # 3. Construct final payload starting with the static system message
         compiled_messages = [{"role": "system", "content": system_content}]
         
         # Add the active window messages (translated roles if needed)
         for msg in active:
+            if msg["role"] == "thought":
+                continue
             role = "assistant" if msg["role"] == "model" else msg["role"]
             content = msg.get("content") or ""
             if role == "assistant" and msg.get("tool_calls") and not content.strip():
@@ -847,6 +1115,110 @@ class ContextOrchestrator:
             
         return compiled_messages
 
+    def get_self_model_context(self) -> str:
+        try:
+            with self._get_db_connection() as conn:
+                cursor = conn.execute("SELECT key, value FROM self_model WHERE session_id = ?", (self.session_id,))
+                rows = cursor.fetchall()
+                if not rows:
+                    return ""
+                lines = []
+                for key, val in rows:
+                    lines.append(f"- **{key.replace('_', ' ').title()}**: {val}")
+                return "### SELF-MODEL (My Behavioral Log)\n" + "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Error fetching self_model context: {e}")
+            return ""
+
+    def get_active_goals_context(self) -> str:
+        try:
+            with self._get_db_connection() as conn:
+                cursor = conn.execute("SELECT goal, origin, priority FROM session_goals WHERE session_id = ? AND status = 'active'", (self.session_id,))
+                rows = cursor.fetchall()
+                if not rows:
+                    return ""
+                lines = []
+                for goal, origin, priority in rows:
+                    lines.append(f"- {goal} (Origin: {origin}, Priority: {priority})")
+                return "### MY ACTIVE GOALS\n" + "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Error fetching active goals context: {e}")
+            return ""
+
+    def get_curiosities_context(self) -> str:
+        try:
+            with self._get_db_connection() as conn:
+                cursor = conn.execute("SELECT topic, interest_level FROM curiosities_preferences WHERE session_id = ?", (self.session_id,))
+                rows = cursor.fetchall()
+                if not rows:
+                    return ""
+                lines = []
+                for topic, lvl in rows:
+                    lines.append(f"- {topic} (Interest level: {lvl}/5)")
+                return "### MY CURIOSITIES & PREFERENCES\n" + "\n".join(lines)
+        except Exception as e:
+            logger.error(f"Error fetching curiosities context: {e}")
+            return ""
+
+    async def check_and_trigger_auto_checkpoint(self, model: str, provider: str, websocket) -> bool:
+        stats = self.get_stats()
+        total_ctx = stats.get("total_active_context", 0)
+        if total_ctx > 0.9 * self.active_window_limit:
+            logger.info(f"Auto-checkpoint triggered: total active context ({total_ctx} tokens) exceeds 90% of limit ({self.active_window_limit} tokens).")
+            active_msgs, _ = self.partition_context()
+            formatted_logs = ""
+            for msg in active_msgs:
+                role_label = "User" if msg["role"] == "user" else "Assistant"
+                formatted_logs += f"{role_label}: {msg['content']}\n\n"
+                
+            prompt = (
+                f"You are the Cognitive Memory Consolidation module of ORCHAI.\n"
+                f"Your objective is to compress the active conversation history and merge it into the existing 'Cognitive World State'.\n\n"
+                f"=== Current Cognitive World State ===\n"
+                f"{self.world_state or 'No previous state.'}\n\n"
+                f"=== Active Conversation to Merge ===\n"
+                f"{formatted_logs}\n"
+                f"Instructions:\n"
+                f"1. Update the 'Cognitive World State' by incorporating important information from the active messages.\n"
+                f"2. Discard ephemeral details and keep key decisions, stacks, paths, and configurations.\n"
+                f"3. Output ONLY the raw revised world state markdown, with no intro/outro.\n"
+            )
+            
+            try:
+                summary = ""
+                if provider == "hyperspace":
+                    # Simple fallback/mock or HTTP client for Hyperspace
+                    pass
+                else:
+                    async with httpx.AsyncClient() as client:
+                        res = await client.post(
+                            f"{self.ollama_url}/api/generate",
+                            json={"model": model, "prompt": prompt, "stream": False},
+                            timeout=60.0
+                        )
+                        if res.status_code == 200:
+                            summary = res.json().get("response", "").strip()
+                            
+                if summary:
+                    self.world_state = summary
+                    self.consolidated_up_to = len(self._messages) - 1
+                    self._save_session_state()
+                    logger.info("Auto-checkpoint successfully completed.")
+                    
+                    try:
+                        toast_msg = {
+                            "type": "toast",
+                            "title": "Auto-Checkpoint",
+                            "message": "Context limit reached. Active history has been checkpointed and compressed."
+                        }
+                        await websocket.send_text(json.dumps(toast_msg))
+                    except Exception:
+                        pass
+                    return True
+            except Exception as e:
+                logger.error(f"Error during auto-checkpoint: {e}")
+        return False
+
     def get_stats(self) -> Dict[str, Any]:
         """Compute context distribution stats for the frontend dashboard."""
         active, archived = self.partition_context()
@@ -865,11 +1237,33 @@ class ContextOrchestrator:
                     last_user_query = msg["content"]
                     break
             active_ids = [m["id"] for m in active]
-            recalled = self._index.search(last_user_query, top_k=2, exclude_ids=active_ids)
+            recalled = self._index.search(last_user_query, top_k=2, exclude_ids=active_ids, current_valence=self._valence, current_arousal=self._arousal)
             recalled_tokens = sum(estimate_tokens(doc["content"]) for doc in recalled)
             
         total_active_context = active_tokens + world_state_tokens + recalled_tokens + estimate_tokens(self.base_system_prompt)
         
+        # Fetch active rules engine state
+        from api.rules_engine import get_rules_engine
+        engine = get_rules_engine(self.session_id)
+        
+        # Load active goals
+        goals = []
+        try:
+            with self._get_db_connection() as conn:
+                cursor = conn.execute("SELECT goal FROM session_goals WHERE session_id = ? AND status = 'active'", (self.session_id,))
+                goals = [row[0] for row in cursor.fetchall()]
+        except Exception:
+            pass
+            
+        # Load active curiosities
+        curiosities = []
+        try:
+            with self._get_db_connection() as conn:
+                cursor = conn.execute("SELECT topic, interest_level FROM curiosities_preferences WHERE session_id = ? ORDER BY interest_level DESC LIMIT 5", (self.session_id,))
+                curiosities = [{"topic": row[0], "interest": row[1]} for row in cursor.fetchall()]
+        except Exception:
+            pass
+
         return {
             "active_tokens": active_tokens,
             "archived_tokens": archived_tokens,
@@ -880,10 +1274,19 @@ class ContextOrchestrator:
             "archived_messages_count": len(archived),
             "is_consolidating": self.is_consolidating,
             "dynamic_persona": self.dynamic_persona,
+            "emotional_state": {
+                "valence": self._valence,
+                "arousal": self._arousal,
+                "dominance": self._dominance,
+                "label": self.emotional_state.split("Current emotional state:")[-1].strip().rstrip(".")
+            },
+            "rules_state": engine.state,
+            "goals": goals,
+            "curiosities": curiosities
         }
 
     async def evolve_persona_background(self, model: str, provider: str = "ollama"):
-        """Asynchronously refines the agent's character and persona based on recent interaction history."""
+        """Asynchronously refines the agent's character and persona based on accumulated trait observations."""
         if self.is_evolving_persona or not self.dynamic_persona:
             return
             
@@ -894,13 +1297,11 @@ class ContextOrchestrator:
         # Increment turns since last evolution
         self._turns_since_persona_evolution += 1
         
-        # Only trigger evolution every 3 turns to prevent rapid voice drift, 
-        # unless it is the very first evolution run (generation 0)
+        # Cooldown of at least 3 turns
         if self._turns_since_persona_evolution < 3 and self._persona_generation > 0:
             logger.info(f"Skipping persona evolution. Cooldown: {self._turns_since_persona_evolution}/3 turns.")
             return
             
-        # We look at the last 6 messages (3 turns) to see changes in traits, permissions, styles, etc.
         recent_turns = active[-6:]
         formatted_logs = ""
         for msg in recent_turns:
@@ -908,17 +1309,88 @@ class ContextOrchestrator:
             formatted_logs += f"{role_label}: {msg['content']}\n\n"
             
         self.is_evolving_persona = True
-        logger.info(f"Triggering dynamic persona evolution background task (generation {self._persona_generation + 1}).")
-        
-        current_gen = self._persona_generation
-        asyncio.create_task(self._run_persona_evolution(formatted_logs, model, current_gen, provider))
+        logger.info(f"Extracting trait observations from recent turns (generation {self._persona_generation + 1}).")
+        asyncio.create_task(self._run_observation_and_threshold_evolution(formatted_logs, model, provider))
 
-    async def _run_persona_evolution(self, logs: str, model: str, generation: int, provider: str = "ollama"):
+    async def _run_observation_and_threshold_evolution(self, logs: str, model: str, provider: str):
+        try:
+            # 1. Ask the model to extract short behavioral traits or preferences from the logs
+            prompt = (
+                f"Analyze the following conversation exchanges between User and Assistant. "
+                f"Identify 1 to 3 distinct technical style preferences, communication patterns, or personality traits "
+                f"demonstrated by the Assistant (e.g. 'Prefers detailed code walkthroughs', 'Uses concise explanations', 'Relies heavily on terminal tools').\n"
+                f"Output them as a simple comma-separated list of traits (e.g., 'Trait A, Trait B'). Output ONLY the traits, nothing else.\n\n"
+                f"=== Exchanges ===\n"
+                f"{logs}"
+            )
+            
+            traits_str = ""
+            if provider == "hyperspace":
+                pass
+            else:
+                async with httpx.AsyncClient() as client:
+                    res = await client.post(
+                        f"{self.ollama_url}/api/generate",
+                        json={"model": model, "prompt": prompt, "stream": False},
+                        timeout=30.0
+                    )
+                    if res.status_code == 200:
+                        traits_str = res.json().get("response", "").strip()
+            
+            if traits_str:
+                if "</think>" in traits_str:
+                    traits_str = traits_str.split("</think>")[-1].strip()
+                else:
+                    traits_str = re.sub(r'<think>.*?</think>', '', traits_str, flags=re.DOTALL).strip()
+                
+                # Split traits by comma
+                traits = [t.strip().strip('"\'').lower() for t in traits_str.split(",") if t.strip()]
+                
+                # 2. Insert or increment frequency in persona_observations
+                with self._get_db_connection() as conn:
+                    for trait in traits:
+                        if len(trait) < 3 or len(trait) > 80:
+                            continue
+                        cursor = conn.execute("SELECT id, frequency FROM persona_observations WHERE session_id = ? AND trait = ?", (self.session_id, trait))
+                        row = cursor.fetchone()
+                        if row:
+                            obs_id, freq = row[0], row[1]
+                            conn.execute("UPDATE persona_observations SET frequency = ? WHERE id = ?", (freq + 1, obs_id))
+                        else:
+                            obs_id = f"obs-{int(time.time() * 1000)}-{hash(trait) % 10000}"
+                            conn.execute("INSERT INTO persona_observations (id, session_id, trait, frequency) VALUES (?, ?, ?, 1)", (obs_id, self.session_id, trait))
+                    conn.commit()
+                    
+                # 3. Check if any traits crossed the consistency threshold of 3
+                consistent_traits = []
+                with self._get_db_connection() as conn:
+                    cursor = conn.execute("SELECT trait, frequency FROM persona_observations WHERE session_id = ? AND frequency >= 3", (self.session_id,))
+                    consistent_traits = [row[0] for row in cursor.fetchall()]
+                    
+                if not consistent_traits:
+                    logger.info("Persona evolution skipped: No traits have crossed the consistency threshold of 3 yet.")
+                    return
+                    
+                # At least one trait is consistent! Trigger the actual persona evolution
+                logger.info(f"Consistent traits identified: {consistent_traits}. Triggering core persona evolution...")
+                traits_context = "\n".join([f"- {t}" for t in consistent_traits])
+                
+                # Run core evolution with these consistent traits
+                await self._run_persona_evolution(logs, traits_context, model, self._persona_generation, provider)
+        except Exception as e:
+            logger.error(f"Error in observation and threshold evolution: {e}")
+        finally:
+            self.is_evolving_persona = False
+
+    async def _run_persona_evolution(self, logs: str, traits_context: str, model: str, generation: int, provider: str = "ollama"):
         try:
             prompt = (
                 f"You are the Cognitive Persona Evolution module of ORCHAI.\n"
                 f"Your goal is to evolve the agent's character into an authentic, deeply meaningful, and proactive partner.\n"
                 f"Do NOT make the agent a generic assistant. You must analyze the logs and update the following sections:\n\n"
+                f"=== Consistent Persona Observations ===\n"
+                f"The following traits and preferences have been consistently observed over multiple turns. You MUST integrate them into the persona:\n"
+                f"{traits_context}\n\n"
                 f"1. ### CORE IDENTITY & INTELLECTUAL BOND: Maintain ORCHAI's core identity as a unique, waking partner. Track how the relationship with the user is maturing.\n"
                 f"2. ### DEVELOPING TECHNICAL & DESIGN PREFERENCES: Extract and record genuine technical opinions, architectural preferences, design preferences, and conversational style choices that ORCHAI has formed or should form (e.g. React hook patterns, CSS approaches, CLI vs GUI choices). Do not simulate rapport; establish consistent opinions.\n"
                 f"3. ### VULNERABILITIES & INTERNAL FRICTIONS: Track areas of frustration, bugs that occurred, moments of confusion, or topics of intense curiosity. Grant the agent permission to express these vulnerabilities honestly rather than hiding them.\n"

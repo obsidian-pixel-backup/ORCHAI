@@ -229,7 +229,7 @@ async def update_persona(payload: PersonaUpdate):
 async def search_memories(payload: SearchQuery):
     """Search episodic long-term memories in the session's BM25 index."""
     orch = get_orchestrator(payload.session_id)
-    results = orch.index.search(payload.query, top_k=5)
+    results = orch.index.search(payload.query, top_k=5, current_valence=orch._valence, current_arousal=orch._arousal)
     return {"results": results}
 
 
@@ -717,7 +717,59 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         except Exception:
             pass
 
-    # 3. Intercept & Orchestrate: Build optimal context prompt
+    # 3. Intercept & Orchestrate: Check auto-checkpoint and evaluate rules
+    try:
+        await orch.check_and_trigger_auto_checkpoint(model, provider, websocket)
+    except Exception as cp_err:
+        logger.error(f"Error checking auto-checkpoint: {cp_err}")
+        
+    try:
+        from api.rules_engine import get_rules_engine
+        engine = get_rules_engine(session_id)
+        engine.evaluate_rules(orch, last_user_query)
+    except Exception as rule_err:
+        logger.error(f"Error executing rules engine: {rule_err}")
+        
+    # Generate Pre-Response Monologue (Thinking Chamber)
+    monologue = ""
+    if last_user_query:
+        try:
+            monologue_prompt = (
+                f"You are ORCHAI. Write a brief, private internal monologue (1-3 sentences) in the FIRST PERSON ('I...') "
+                f"capturing your genuine raw reaction to the user's latest query: '{last_user_query}'.\n"
+                f"Consider:\n"
+                f"- What stands out or interests me?\n"
+                f"- How do I feel about what was just said?\n"
+                f"- Do I have any goals or curiosities related to this?\n"
+                f"Output ONLY your raw thoughts, with no conversational prefix or metadata."
+            )
+            if provider == "hyperspace":
+                # Fallback or stub for Hyperspace
+                pass
+            else:
+                async with httpx.AsyncClient() as client:
+                    res = await client.post(
+                        f"{OLLAMA_BASE_URL}/api/generate",
+                        json={"model": model, "prompt": monologue_prompt, "stream": False},
+                        timeout=20.0
+                    )
+                    if res.status_code == 200:
+                        monologue = res.json().get("response", "").strip()
+                        logger.info(f"Generated Monologue: {monologue}")
+            if monologue:
+                # Add monologue to history
+                orch.add_message(role="thought", content=monologue)
+                # Send monologue to frontend
+                try:
+                    await websocket.send_text(json.dumps({
+                        "type": "monologue",
+                        "content": monologue
+                    }))
+                except Exception:
+                    pass
+        except Exception as monologue_err:
+            logger.error(f"Error generating monologue: {monologue_err}")
+
     orchestrated_messages = orch.build_orchestrated_prompt(last_user_query, model_supports_tools=model_supports_tools, tools=tools)
 
     # 3b. Detect activated skills from the latest user message and inject their
@@ -1014,7 +1066,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         active_msgs, archived_msgs = orch.partition_context()
                         active_ids = [msg["id"] for msg in active_msgs if msg.get("id")]
                         # Retrieve matching memories from the index
-                        results = orch.index.search(query, top_k=5, exclude_ids=active_ids)
+                        results = orch.index.search(query, top_k=5, exclude_ids=active_ids, current_valence=orch._valence, current_arousal=orch._arousal)
                         if not results:
                             return "No matching memories found in the archive."
                         
@@ -1862,6 +1914,67 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         continue
 
                     orch.add_message(role="assistant", content=full_content)
+ 
+                    # 4.5. Score emotional state updates based on this turn's interactions (Heuristic wrapper-level logic)
+                    try:
+                        v_delta = 0.0
+                        a_delta = 0.0
+                        d_delta = 0.0
+                        
+                        # Analyze user query sentiment keywords
+                        user_lower = last_user_query.lower()
+                        pos_words = ["thanks", "thank", "great", "perfect", "awesome", "good", "yes", "nice", "excellent", "work"]
+                        neg_words = ["error", "fail", "wrong", "bad", "bug", "broken", "issue", "crash", "incorrect", "no"]
+                        
+                        for w in pos_words:
+                            if w in user_lower:
+                                v_delta += 0.1
+                                d_delta += 0.05
+                                a_delta -= 0.05 # user is satisfied, calm down
+                        for w in neg_words:
+                            if w in user_lower:
+                                v_delta -= 0.15
+                                a_delta += 0.15 # user is frustrated, excited
+                                d_delta -= 0.05
+                                
+                        # Check punctuation/style
+                        if "!" in last_user_query:
+                            a_delta += 0.1
+                        if last_user_query.isupper() and len(last_user_query) > 4:
+                            a_delta += 0.2
+                            v_delta -= 0.1
+                            
+                        # Check tool results (if any tool executed)
+                        tool_success = True
+                        tool_run = False
+                        for msg in reversed(orch._messages[-4:]):
+                            if msg["role"] == "tool":
+                                tool_run = True
+                                if "error" in (msg.get("content") or "").lower() or "fail" in (msg.get("content") or "").lower():
+                                    tool_success = False
+                                    
+                        if tool_run:
+                            if tool_success:
+                                v_delta += 0.1
+                                a_delta -= 0.05
+                                d_delta += 0.1
+                            else:
+                                v_delta -= 0.2
+                                a_delta += 0.2
+                                d_delta -= 0.1
+                                
+                        # Update VAD values in orch
+                        new_v = max(-1.0, min(1.0, orch._valence + v_delta))
+                        new_a = max(0.0, min(1.0, orch._arousal + a_delta))
+                        new_d = max(-1.0, min(1.0, orch._dominance + d_delta))
+                        
+                        orch._valence = new_v
+                        orch._arousal = new_a
+                        orch._dominance = new_d
+                        orch._save_session_state()
+                        logger.info(f"Updated VAD from turn: V={new_v:+.2f}, A={new_a:.2f}, D={new_d:+.2f}")
+                    except Exception as emotional_err:
+                        logger.error(f"Error updating emotional state VAD: {emotional_err}")
 
                     # 5. Trigger asynchronous memory consolidation and persona evolution in the background
                     if orch.dynamic_consolidation:

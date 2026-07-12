@@ -109,10 +109,15 @@ export function ChatInterfacePanel({
   const historyContainerRef = useRef<HTMLDivElement | null>(null);
   const streamingMessageIdRef = useRef<string | null>(null);
   const modelDropdownRef = useRef<HTMLDivElement | null>(null);
+  const dropdownMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        modelDropdownRef.current && !modelDropdownRef.current.contains(target) &&
+        (!dropdownMenuRef.current || !dropdownMenuRef.current.contains(target))
+      ) {
         setIsModelDropdownOpen(false);
       }
     }
@@ -350,7 +355,21 @@ export function ChatInterfacePanel({
         try {
           const data = JSON.parse(event.data);
 
-          if (data.type === 'stream_thinking') {
+          if (data.type === 'monologue') {
+            const monologueText: string = data.content ?? '';
+            if (!streamingMessageIdRef.current) {
+              const newId = `model-${Date.now()}`;
+              streamingMessageIdRef.current = newId;
+              setMessagesRef.current((prev) => [...prev, { id: newId, role: 'model', content: '', monologue: monologueText, stats: data.stats }]);
+            } else {
+              const currentId = streamingMessageIdRef.current;
+              setMessagesRef.current((prev) =>
+                prev.map((msg) =>
+                  msg.id === currentId ? { ...msg, monologue: monologueText, stats: data.stats } : msg
+                )
+              );
+            }
+          } else if (data.type === 'stream_thinking') {
             const token: string = data.content ?? '';
 
             // Handle thinking tokens - ALWAYS maintain single thinking message for chronological flow
@@ -704,35 +723,13 @@ export function ChatInterfacePanel({
           <span className="status-dot green"></span>
           <span className="status-label">Active Model:</span>
           <span className="status-value" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {selectedModel}
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s', transform: isModelDropdownOpen ? 'rotate(-180deg)' : 'none' }}>
+            <span style={{ display: 'inline-block', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {selectedModel}
+            </span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transition: 'transform 0.2s', transform: isModelDropdownOpen ? 'rotate(-180deg)' : 'none', flexShrink: 0 }}>
               <polyline points="6 9 12 15 18 9"></polyline>
             </svg>
           </span>
-          
-          {isModelDropdownOpen && models.length > 0 && (
-            <div className="custom-model-dropdown" style={{ top: '100%', left: 0, marginTop: '8px', minWidth: '220px' }}>
-              {models.map((m) => {
-                const notChat = m.can_chat === false;
-                return (
-                  <div
-                    key={m.name}
-                    className={`custom-model-option ${m.name === selectedModel ? 'selected' : ''} ${notChat ? 'disabled' : ''}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (notChat) return;
-                      if (onModelChange) onModelChange(m.name);
-                      setIsModelDropdownOpen(false);
-                    }}
-                    title={notChat ? 'Embedding model — it produces vectors, not text, so it can’t generate chat replies.' : undefined}
-                  >
-                    <span className="model-option-name">{m.name}</span>
-                    {notChat && <span className="model-option-badge">Not chat-compatible</span>}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -779,6 +776,30 @@ export function ChatInterfacePanel({
         </div>
       </div>
 
+      {isModelDropdownOpen && models.length > 0 && (
+        <div ref={dropdownMenuRef} className="custom-model-dropdown" style={{ position: 'absolute', top: '56px', left: '20px', marginTop: '4px', minWidth: '320px', zIndex: 1200 }}>
+          {models.map((m) => {
+            const notChat = m.can_chat === false;
+            return (
+              <div
+                key={m.name}
+                className={`custom-model-option ${m.name === selectedModel ? 'selected' : ''} ${notChat ? 'disabled' : ''}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (notChat) return;
+                  if (onModelChange) onModelChange(m.name);
+                  setIsModelDropdownOpen(false);
+                }}
+                title={notChat ? 'Embedding model — it produces vectors, not text, so it can’t generate chat replies.' : undefined}
+              >
+                <span className="model-option-name">{m.name}</span>
+                {notChat && <span className="model-option-badge">Not chat-compatible</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* ── Chat History Area (with rounded top-left corner) ── */}
       <div className="chat-history-wrapper">
         <div
@@ -795,6 +816,7 @@ export function ChatInterfacePanel({
               images={msg.images}
               documents={msg.documents}
               thinking={msg.thinking}
+              monologue={msg.monologue}
               stats={msg.stats}
               toolApprovalRequest={msg.toolApprovalRequest}
               toolExecutions={msg.toolExecutions}

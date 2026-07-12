@@ -20,6 +20,7 @@ class ScreenWatcher:
         self.vision_installed = True
         self.last_error = None
         self.last_screen_hash = None
+        self.last_description = None
         
         # Ensure a directory exists for temp captures
         self.capture_dir = os.path.join(os.path.dirname(__file__), '..', 'temp_captures')
@@ -87,8 +88,20 @@ class ScreenWatcher:
                         # Describe the screen using Ollama's llava model
                         description = self._describe_screen(filepath)
                         if description:
-                            # Inject into the primary active session (defaulting to 'default' session_id)
-                            self._inject_sensory_context(description)
+                            is_similar = False
+                            if getattr(self, "last_description", None) is not None:
+                                words1 = set(description.lower().split())
+                                words2 = set(self.last_description.lower().split())
+                                if words1 and words2:
+                                    similarity = len(words1.intersection(words2)) / len(words1.union(words2))
+                                    if similarity >= 0.8:
+                                        is_similar = True
+                                        logger.info(f"Screen description too similar ({similarity:.1%}). Suppressing sensory injection.")
+                            
+                            if not is_similar:
+                                self.last_description = description
+                                # Inject into the primary active session (defaulting to 'default' session_id)
+                                self._inject_sensory_context(description)
                     else:
                         logger.debug("Screen unchanged. Skipping vision descriptor run.")
                         

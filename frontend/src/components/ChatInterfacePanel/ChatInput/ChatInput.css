@@ -145,17 +145,17 @@
   position: absolute;
   bottom: calc(100% + 10px);
   left: 0;
-  background: var(--glass-bg);
+  background: var(--dropdown-bg);
   backdrop-filter: var(--glass-blur-saturate);
   -webkit-backdrop-filter: var(--glass-blur-saturate);
   border: 1px solid var(--glass-border);
   border-radius: 7px;
   padding: 8px;
-  min-width: 260px;
+  min-width: 160px;
   box-shadow: var(--glass-shadow);
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   z-index: 100;
   animation: slideUpFade 0.2s ease-out;
 }
@@ -171,14 +171,22 @@
   }
 }
 
+.plus-menu-header {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 6px 8px 2px;
+  margin-bottom: 0;
+}
+
 .plus-menu-item {
   display: flex;
   align-items: center;
-  padding: 10px 12px;
-  border-radius: 7px;
+  padding: 6px 8px;
+  border-radius: 5px;
   cursor: pointer;
-  transition: background-color 0.2s;
-  gap: 12px;
+  transition: background-color 0.15s ease;
+  gap: 8px;
 }
 
 .plus-menu-item:hover {
@@ -186,35 +194,96 @@
 }
 
 .plus-menu-icon {
-  font-size: 1.2rem;
+  font-size: 0.9rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
 }
 
-.plus-menu-text {
-  display: flex;
-  flex-direction: column;
+.plus-menu-item:hover .plus-menu-icon {
+  color: var(--text-primary);
 }
 
 .plus-menu-title {
   color: var(--text-primary);
-  font-size: 0.95rem;
-  font-weight: 500;
-}
-
-.plus-menu-desc {
-  color: var(--text-secondary);
   font-size: 0.8rem;
-  margin-top: 2px;
+  font-weight: 500;
 }
 
 .plus-menu-divider {
   height: 1px;
   background-color: var(--border-color);
   margin: 4px 0;
+}
+
+/* Submenu Styles */
+.plus-menu-item.has-submenu {
+  position: relative;
+  justify-content: space-between;
+}
+
+.submenu-arrow {
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+}
+
+.plus-submenu-dropdown {
+  display: none;
+  position: absolute;
+  left: calc(100% + 4px);
+  bottom: 0;
+  background: var(--dropdown-bg);
+  backdrop-filter: var(--glass-blur-saturate);
+  -webkit-backdrop-filter: var(--glass-blur-saturate);
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
+  padding: 6px;
+  min-width: 160px;
+  max-height: 106px; /* Exactly 3 items (approx 28px each + gaps + padding) */
+  overflow-y: auto;
+  box-shadow: var(--glass-shadow);
+  flex-direction: column;
+  gap: 2px;
+  z-index: 101;
+  animation: slideRightFade 0.2s ease-out;
+}
+
+/* Custom scrollbar for submenu */
+.plus-submenu-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+
+.plus-submenu-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.plus-submenu-dropdown::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+.plus-submenu-dropdown::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.plus-menu-item.has-submenu:hover .plus-submenu-dropdown {
+  display: flex;
+}
+
+@keyframes slideRightFade {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 .skill-chip {

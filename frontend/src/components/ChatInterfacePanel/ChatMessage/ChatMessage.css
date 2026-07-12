@@ -56,6 +56,39 @@
   width: 100%;
 }
 
+/* Monologue Container Styling */
+.monologue-container {
+  border-left: 2px solid #eab308; /* warm gold color */
+  padding-left: 14px;
+  margin: 6px 0 12px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(234, 179, 8, 0.03);
+  padding: 8px 12px;
+  border-radius: 4px;
+}
+
+.monologue-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #eab308;
+}
+
+.monologue-icon {
+  flex-shrink: 0;
+}
+
+.monologue-body {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
 /* Thinking Block styling */
 .thinking-block {
   border-left: 2px solid var(--border-color);

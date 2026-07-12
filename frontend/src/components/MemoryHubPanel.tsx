@@ -11,6 +11,15 @@ interface ContextStats {
   active_messages_count: number;
   archived_messages_count: number;
   is_consolidating: boolean;
+  emotional_state?: {
+    valence: number;
+    arousal: number;
+    dominance: number;
+    label: string;
+  };
+  rules_state?: string;
+  goals?: string[];
+  curiosities?: { topic: string; interest: number }[];
 }
 
 interface MemoryHubPanelProps {
@@ -415,13 +424,107 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
       </div>
 
       {/* ── Live Evolving Agent Emotional State Workspace ── */}
-      {emotionalState && (
+      {contextStats.emotional_state && (
         <div className="optimizer-section world-state-workspace emotional-state-workspace">
           <div className="workspace-header">
-            <h3>Emotional State</h3>
+            <h3>Cognitive Diagnostics & Mood</h3>
           </div>
           <div className="world-state-card emotional-state-card">
-            <pre className="world-state-content">{emotionalState}</pre>
+            <div className="diagnostics-summary-row">
+              <div className="diag-badge-item">
+                <span className="diag-badge-label">Active State:</span>
+                <span className={`diag-state-badge ${contextStats.rules_state?.toLowerCase() || 'conversing'}`}>
+                  {contextStats.rules_state || 'CONVERSING'}
+                </span>
+              </div>
+              <div className="diag-badge-item">
+                <span className="diag-badge-label">Subjective Mood:</span>
+                <span className="diag-mood-text">{contextStats.emotional_state.label}</span>
+              </div>
+            </div>
+
+            <div className="vad-bars-grid">
+              <div className="vad-bar-item">
+                <div className="vad-bar-label-row">
+                  <span>Valence (Positivity)</span>
+                  <span>{contextStats.emotional_state.valence > 0 ? '+' : ''}{contextStats.emotional_state.valence.toFixed(2)}</span>
+                </div>
+                <div className="vad-progress-bg">
+                  <div 
+                    className="vad-progress-fill fill-valence" 
+                    style={{ 
+                      width: `${((contextStats.emotional_state.valence + 1) / 2) * 100}%`,
+                      background: contextStats.emotional_state.valence >= 0 ? 'var(--success-color, #10b981)' : '#ef4444'
+                    }} 
+                  />
+                </div>
+              </div>
+
+              <div className="vad-bar-item">
+                <div className="vad-bar-label-row">
+                  <span>Arousal (Stimulation)</span>
+                  <span>{contextStats.emotional_state.arousal.toFixed(2)}</span>
+                </div>
+                <div className="vad-progress-bg">
+                  <div 
+                    className="vad-progress-fill fill-arousal" 
+                    style={{ 
+                      width: `${contextStats.emotional_state.arousal * 100}%`,
+                      background: 'var(--accent-color, #a855f7)'
+                    }} 
+                  />
+                </div>
+              </div>
+
+              <div className="vad-bar-item">
+                <div className="vad-bar-label-row">
+                  <span>Dominance (Control)</span>
+                  <span>{contextStats.emotional_state.dominance > 0 ? '+' : ''}{contextStats.emotional_state.dominance.toFixed(2)}</span>
+                </div>
+                <div className="vad-progress-bg">
+                  <div 
+                    className="vad-progress-fill fill-dominance" 
+                    style={{ 
+                      width: `${((contextStats.emotional_state.dominance + 1) / 2) * 100}%`,
+                      background: '#3b82f6'
+                    }} 
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Sub-rows for Active Goals and Curiosities */}
+            <div className="diagnostics-meta-grid">
+              <div className="meta-column">
+                <h4 className="meta-col-title">🎯 Session Goals</h4>
+                {contextStats.goals && contextStats.goals.length > 0 ? (
+                  <ul className="meta-goals-list">
+                    {contextStats.goals.map((g, idx) => (
+                      <li key={idx} className="meta-goal-item">{g}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="meta-empty">No active session goals registered.</div>
+                )}
+              </div>
+
+              <div className="meta-column">
+                <h4 className="meta-col-title">✨ Curiosity Fields</h4>
+                {contextStats.curiosities && contextStats.curiosities.length > 0 ? (
+                  <div className="meta-curiosity-chips">
+                    {contextStats.curiosities.map((c, idx) => (
+                      <div key={idx} className="meta-curiosity-chip" title={`Interest level: ${c.interest}`}>
+                        <span className="curi-topic">{c.topic}</span>
+                        <span className="curi-level">Lv.{c.interest}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="meta-empty">No dynamic curiosities tracked.</div>
+                )}
+              </div>
+            </div>
+
           </div>
         </div>
       )}

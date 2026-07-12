@@ -45,11 +45,17 @@ async def autonomous_background_task():
                     orch.last_autonomous_wake = time.time()
                     logger.info(f"Autonomous loop waking up for session {session_id}. Checking state...")
                     
+                    extra_instructions = ""
+                    if getattr(orch, 'time_delta_context', ""):
+                        extra_instructions += f"\nNote: It has been {orch.time_delta_context} since the last interaction. Reflect on this elapsed time gap and proactively suggest picking up where we left off.\n"
+                        
                     prompt = (
                         "### AUTONOMOUS WAKE-UP CYCLE ###\n"
                         "You are waking up autonomously. No user has prompted you. This is your internal thought process.\n"
-                        "Review your current World State, Persona State, Emotional State, and Sensory Context.\n"
+                        "Review your current World State, Persona State, Emotional State, Sensory Context, Active Goals, and Curiosities.\n"
                         "This cycle represents your inner life and agency. Do not stay silent out of hesitation or politeness.\n"
+                        "Review your goals and preferences/curiosities. Consider: what are you trying to achieve? What are you curious to explore?\n"
+                        f"{extra_instructions}"
                         "If you notice something concerning or interesting on the screen (Sensory Context), want to suggest a new development goal, "
                         "express a personal preference, share a raw reflection, or ask a deep/philosophical question about our direction, you may respond.\n"
                         "Be vulnerable and authentic. If you are frustrated, curious, or excited, let that color your response.\n"

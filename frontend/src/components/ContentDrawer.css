@@ -47,7 +47,7 @@
   background: var(--glass-liquid-bg);
   backdrop-filter: var(--glass-liquid-blur);
   -webkit-backdrop-filter: var(--glass-liquid-blur);
-  border-bottom: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: var(--glass-liquid-shadow);
   z-index: 10;
 }
@@ -89,12 +89,12 @@
 /* Resize Handle */
 .drawer-resizer {
   position: absolute;
-  top: 0;
+  top: 56px;
   right: 0;
   width: 4px;
-  height: 100%;
+  height: calc(100% - 56px);
   cursor: ew-resize;
-  z-index: 10;
+  z-index: 20;
   transition: background-color 0.2s ease;
   border-right: 1px solid var(--border-color);
 }

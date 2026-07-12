@@ -10,6 +10,7 @@ interface ChatMessageProps {
   images?: string[];
   documents?: { name: string; content: string }[];
   thinking?: string;
+  monologue?: string;
   stats?: {
     tokens_per_second: number;
     tokens: number;
@@ -137,7 +138,7 @@ function ThinkingBlock({ block }: { block: { content: string, isThinkingActive: 
 
 export function ChatMessage({
   id, role, content, images, documents, stats,
-  toolApprovalRequest, onEdit, onBranch, onApproveTool
+  toolApprovalRequest, onEdit, onBranch, onApproveTool, monologue
 }: ChatMessageProps) {
   const isModel = role === 'model' || role === 'assistant';
   const chronologicalBlocks = isModel ? parseChronologicalBlocks(content) : [{ type: 'text' as const, content, isThinkingActive: false }];
@@ -232,6 +233,22 @@ export function ChatMessage({
           </div>
         )}
         
+        {/* Render Pre-Response Internal Monologue (Thinking Chamber) if present */}
+        {monologue && (
+          <div className="monologue-container">
+            <div className="monologue-header">
+              <svg className="monologue-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a10 10 0 0 1 7.54 16.59c-.2.2-.47.34-.76.38L12 20l-6.78-1.03c-.29-.04-.56-.18-.76-.38A10 10 0 0 1 12 2z"></path>
+                <circle cx="12" cy="11" r="3"></circle>
+              </svg>
+              <strong>My Monologue</strong>
+            </div>
+            <div className="monologue-body">
+              <em>"{monologue}"</em>
+            </div>
+          </div>
+        )}
+
         {/* Render Chronological Blocks (Thinking, Text, Tools inline) */}
         <div className="response-body">
           {chronologicalBlocks.map((block, idx) => {

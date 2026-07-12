@@ -421,22 +421,30 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration, sendOn
           
           {showPlusMenu && (
             <div className="plus-menu-dropdown">
+              <div className="plus-menu-header">Add Context</div>
               <div className="plus-menu-item" onClick={() => { handleContextClick(); setShowPlusMenu(false); }}>
-                <span className="plus-menu-icon">📎</span>
-                <div className="plus-menu-text">
-                  <span className="plus-menu-title">Upload files</span>
-                </div>
+                <span className="plus-menu-title">Upload files</span>
               </div>
               <div className="plus-menu-divider"></div>
-              {skills.map(skill => (
-                <div key={skill.id} className="plus-menu-item" onClick={() => handleSkillSelect(skill.label)}>
-                  <span className="plus-menu-icon">{skill.icon}</span>
-                  <div className="plus-menu-text">
-                    <span className="plus-menu-title">{skill.label}</span>
-                    {skill.description && <span className="plus-menu-desc">{skill.description}</span>}
-                  </div>
+              <div className="plus-menu-item has-submenu">
+                <span className="plus-menu-title">Skills</span>
+                <span className="submenu-arrow">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </span>
+                
+                <div className="plus-submenu-dropdown">
+                  {skills.map(skill => (
+                    <div key={skill.id} className="plus-menu-item" onClick={(e) => {
+                      e.stopPropagation();
+                      handleSkillSelect(skill.label);
+                    }}>
+                      <span className="plus-menu-title">{skill.label}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           )}
         </div>

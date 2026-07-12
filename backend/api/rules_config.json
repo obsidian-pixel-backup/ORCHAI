@@ -1,0 +1,17 @@
+{
+    "rules": [
+        {
+            "rule_name": "consecutive_shell_failures",
+            "trigger_threshold": 3,
+            "target_state": "DEBUGGING",
+            "message": "User has experienced multiple consecutive terminal command failures. Activating debugging mode."
+        },
+        {
+            "rule_name": "rapid_file_edits",
+            "trigger_threshold": 5,
+            "time_window_seconds": 60,
+            "target_state": "REFLECTIVE",
+            "message": "User is performing rapid edits in a short window. I should offer architectural overview support."
+        }
+    ]
+}

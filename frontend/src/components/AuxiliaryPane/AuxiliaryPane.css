@@ -290,9 +290,10 @@
 .drawer-resizer.drawer-resizer-left {
   right: auto;
   left: 0;
+  top: 56px;
   cursor: ew-resize;
   position: absolute;
   width: 4px;
-  height: 100%;
-  z-index: 10;
+  height: calc(100% - 56px);
+  z-index: 20;
 }

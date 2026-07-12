@@ -104,10 +104,10 @@
   gap: 8px;
   font-size: 0.85rem;
   color: var(--text-secondary);
-  background: var(--subtle-bg);
+  background: transparent;
   padding: 6px 14px;
   border-radius: 7px;
-  border: 1px solid var(--border-color);
+  border: none;
 }
 
 .status-dot {
@@ -149,8 +149,8 @@
 .status-value {
   color: var(--text-primary);
   font-weight: 600;
-  background-color: var(--subtle-bg);
-  border: 1px solid var(--border-color);
+  background-color: transparent;
+  border: none;
   padding: 2px 8px;
   border-radius: 6px;
   font-family: var(--font-family);
