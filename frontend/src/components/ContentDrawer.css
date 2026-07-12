@@ -96,6 +96,7 @@
   cursor: ew-resize;
   z-index: 10;
   transition: background-color 0.2s ease;
+  border-right: 1px solid var(--border-color);
 }
 
 .drawer-resizer:hover,

@@ -14,8 +14,6 @@
   flex-direction: column;
   background-color: transparent;
   border-top-left-radius: 7px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
 
@@ -87,6 +85,7 @@
   background: var(--glass-liquid-bg);
   backdrop-filter: var(--glass-liquid-blur);
   -webkit-backdrop-filter: var(--glass-liquid-blur);
+  border: none;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: var(--glass-liquid-shadow);
   display: flex;
@@ -190,8 +189,8 @@
   background: var(--glass-liquid-bg);
   backdrop-filter: var(--glass-liquid-blur);
   -webkit-backdrop-filter: var(--glass-liquid-blur);
+  border: none;
   border-top: 1px solid var(--glass-liquid-border);
-  border-left: 1px solid var(--glass-liquid-border);
   box-shadow: var(--glass-liquid-shadow);
   z-index: 10;
 }

@@ -100,7 +100,7 @@
 }
 
 body {
-  background: radial-gradient(circle at 50% 0%, #1e2230 0%, var(--bg-color) 100%);
+  background: var(--bg-color);
   color: var(--text-primary);
   font-family: var(--font-family);
   font-size: 14px; /* Default body text to 14px */
@@ -110,7 +110,7 @@ body {
 }
 
 [data-theme="light"] body {
-  background: radial-gradient(circle at 50% 0%, #f6f8fc 0%, var(--bg-color) 100%);
+  background: var(--bg-color);
 }
 
 .app-container {
