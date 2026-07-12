@@ -724,3 +724,142 @@
   padding: 4px 0;
 }
 
+/* ── Cognitive Self-Model Layer Styles ── */
+.self-model-card {
+  padding: 14px;
+}
+
+.self-model-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.self-model-row-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-color);
+  padding: 10px 12px;
+  border-radius: 5px;
+}
+
+.self-model-key {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+}
+
+.self-model-val {
+  font-size: 13px;
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+/* ── Trait Observations Buffer Styles ── */
+.observations-card {
+  padding: 14px;
+}
+
+.observations-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.obs-item-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid var(--border-color);
+  padding: 10px 12px;
+  border-radius: 5px;
+}
+
+.obs-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+}
+
+.obs-trait {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.obs-freq {
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--text-muted, #94a3b8);
+}
+
+.obs-bar-bg {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 2px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.obs-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease-out;
+}
+
+/* ── Narrative Diary Logs Feed Styles ── */
+.diary-card {
+  padding: 16px;
+}
+
+.diary-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+  padding-left: 14px;
+  border-left: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+.diary-timeline-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+
+.diary-timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-color, #a855f7);
+  box-shadow: 0 0 6px var(--accent-color, #a855f7);
+}
+
+.diary-timeline-time {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted, #94a3b8);
+  letter-spacing: 0.04em;
+}
+
+.diary-timeline-body {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+

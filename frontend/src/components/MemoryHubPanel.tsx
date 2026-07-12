@@ -20,6 +20,9 @@ interface ContextStats {
   rules_state?: string;
   goals?: string[];
   curiosities?: { topic: string; interest: number }[];
+  self_model?: { key: string; value: string }[];
+  diary?: { entry: string; timestamp: number }[];
+  observations?: { trait: string; frequency: number }[];
 }
 
 interface MemoryHubPanelProps {
@@ -525,6 +528,77 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
               </div>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* ── First-Person Self-Model Workspace ── */}
+      {contextStats.self_model && contextStats.self_model.length > 0 && (
+        <div className="optimizer-section world-state-workspace self-model-workspace">
+          <div className="workspace-header">
+            <h3>Cognitive Self-Model Layer</h3>
+          </div>
+          <div className="world-state-card self-model-card">
+            <div className="self-model-grid">
+              {contextStats.self_model.map((entry, idx) => (
+                <div key={idx} className="self-model-row-item">
+                  <span className="self-model-key">{entry.key}</span>
+                  <span className="self-model-val">{entry.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Trait Observations Buffer ── */}
+      {contextStats.observations && contextStats.observations.length > 0 && (
+        <div className="optimizer-section world-state-workspace observations-workspace">
+          <div className="workspace-header">
+            <h3>Persona Observation Buffer</h3>
+          </div>
+          <div className="world-state-card observations-card">
+            <div className="observations-grid">
+              {contextStats.observations.map((obs, idx) => (
+                <div key={idx} className="obs-item-row">
+                  <div className="obs-meta-row">
+                    <span className="obs-trait">✨ {obs.trait}</span>
+                    <span className="obs-freq">{obs.frequency}/3</span>
+                  </div>
+                  <div className="obs-bar-bg">
+                    <div 
+                      className="obs-bar-fill" 
+                      style={{ 
+                        width: `${Math.min(100, (obs.frequency / 3) * 100)}%`,
+                        background: obs.frequency >= 3 ? 'var(--success-color, #10b981)' : 'var(--accent-color, #a855f7)'
+                      }} 
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Narrative Diary Logs Feed ── */}
+      {contextStats.diary && contextStats.diary.length > 0 && (
+        <div className="optimizer-section world-state-workspace diary-workspace">
+          <div className="workspace-header">
+            <h3>Chronological Narrative Logs (Diary)</h3>
+          </div>
+          <div className="world-state-card diary-card">
+            <div className="diary-timeline">
+              {contextStats.diary.map((log, idx) => {
+                const date = new Date(log.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                return (
+                  <div key={idx} className="diary-timeline-item">
+                    <div className="diary-timeline-time">{date}</div>
+                    <div className="diary-timeline-body">"{log.entry}"</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

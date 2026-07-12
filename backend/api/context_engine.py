@@ -1264,6 +1264,33 @@ class ContextOrchestrator:
         except Exception:
             pass
 
+        # Load self_model key-values
+        self_model_entries = []
+        try:
+            with self._get_db_connection() as conn:
+                cursor = conn.execute("SELECT key, value FROM self_model WHERE session_id = ?", (self.session_id,))
+                self_model_entries = [{"key": row[0], "value": row[1]} for row in cursor.fetchall()]
+        except Exception:
+            pass
+
+        # Load narrative logs (diary entries)
+        diary_entries = []
+        try:
+            with self._get_db_connection() as conn:
+                cursor = conn.execute("SELECT entry, timestamp FROM narrative_logs WHERE session_id = ? ORDER BY timestamp DESC LIMIT 20", (self.session_id,))
+                diary_entries = [{"entry": row[0], "timestamp": row[1]} for row in cursor.fetchall()]
+        except Exception:
+            pass
+
+        # Load persona observations
+        trait_observations = []
+        try:
+            with self._get_db_connection() as conn:
+                cursor = conn.execute("SELECT trait, frequency FROM persona_observations WHERE session_id = ? ORDER BY frequency DESC", (self.session_id,))
+                trait_observations = [{"trait": row[0], "frequency": row[1]} for row in cursor.fetchall()]
+        except Exception:
+            pass
+
         return {
             "active_tokens": active_tokens,
             "archived_tokens": archived_tokens,
@@ -1282,7 +1309,10 @@ class ContextOrchestrator:
             },
             "rules_state": engine.state,
             "goals": goals,
-            "curiosities": curiosities
+            "curiosities": curiosities,
+            "self_model": self_model_entries,
+            "diary": diary_entries,
+            "observations": trait_observations
         }
 
     async def evolve_persona_background(self, model: str, provider: str = "ollama"):
