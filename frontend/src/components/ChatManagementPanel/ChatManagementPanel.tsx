@@ -10,7 +10,6 @@ interface ChatManagementPanelProps {
   chats: Chat[];
   activeChatId: string;
   onSelectChat: (id: string) => void;
-  onNewChat: () => void;
   onDeleteChat: (id: string) => void;
   onRenameChat: (id: string, title: string) => void;
 }
@@ -19,7 +18,6 @@ export function ChatManagementPanel({
   chats,
   activeChatId,
   onSelectChat,
-  onNewChat,
   onDeleteChat,
   onRenameChat,
 }: ChatManagementPanelProps) {
@@ -72,9 +70,6 @@ export function ChatManagementPanel({
   return (
     <div className="chat-management-container">
       <div className="chat-list">
-        <button className="new-chat-btn" onClick={onNewChat}>
-          + New Chat
-        </button>
         <div className="chat-items-scroll">
           {chats.map((chat) => {
             const isActive = chat.id === activeChatId;

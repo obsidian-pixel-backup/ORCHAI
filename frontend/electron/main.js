@@ -94,9 +94,10 @@ function createWindow() {
 function startPythonBackend() {
     // __dirname is frontend/electron during dev compilation, so backend is at ../../backend
     const backendPath = path.join(__dirname, '../../backend');
-    pythonProcess = (0, child_process_1.spawn)('python', ['main.py'], {
+    pythonProcess = (0, child_process_1.spawn)('python', ['-u', 'main.py'], {
         cwd: backendPath,
-        shell: true
+        shell: true,
+        env: { ...process.env, PYTHONUNBUFFERED: "1" }
     });
     pythonProcess.stdout.on('data', (data) => {
         const text = data.toString().trim();

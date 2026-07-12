@@ -47,9 +47,10 @@
 .skill-item {
   background-color: var(--subtle-bg);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 7px;
   padding: 12px;
   transition: opacity 0.2s;
+  flex-shrink: 0;
 }
 
 .skill-item.disabled {
@@ -113,7 +114,9 @@
 .skill-modal-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background: var(--overlay-bg-glass);
+  backdrop-filter: var(--glass-blur-saturate);
+  -webkit-backdrop-filter: var(--glass-blur-saturate);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -121,15 +124,17 @@
 }
 
 .skill-modal {
-  background-color: var(--bg-color, #0A0A0C);
-  border: 1px solid var(--border-color, #333);
-  border-radius: 12px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-saturate);
+  -webkit-backdrop-filter: var(--glass-blur-saturate);
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
   padding: 24px;
   width: 90%;
   max-width: 500px;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+  box-shadow: var(--glass-shadow);
 }
 
 .skill-modal h3 {
@@ -232,7 +237,7 @@ input:checked + .slider:before {
   transform: translateX(16px);
 }
 .slider.round {
-  border-radius: 20px;
+  border-radius: 7px;
 }
 .slider.round:before {
   border-radius: 50%;

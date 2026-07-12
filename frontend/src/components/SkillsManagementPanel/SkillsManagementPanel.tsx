@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './SkillsManagementPanel.css';
+import { useDialog } from '../ConfirmDialog/DialogContext';
 
 export interface Skill {
   id: string;
@@ -11,6 +12,8 @@ export interface Skill {
 }
 
 export function SkillsManagementPanel() {
+  // @ts-ignore
+  const dialog = useDialog();
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -47,12 +50,17 @@ export function SkillsManagementPanel() {
       if (!res.ok) throw new Error('Failed to update skill');
       setSkills(skills.map(s => s.id === skill.id ? { ...s, enabled: !s.enabled } : s));
     } catch (err: any) {
-      alert(err.message);
+      dialog.alert('Skill Update Error', err.message);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this skill?')) return;
+    const confirmed = await dialog.confirm(
+      'Delete Skill?',
+      'Are you sure you want to delete this skill?',
+      { confirmLabel: 'Delete', danger: true }
+    );
+    if (!confirmed) return;
     try {
       const res = await fetch(`http://127.0.0.1:8000/api/skills/manage/${id}`, {
         method: 'DELETE'
@@ -60,7 +68,7 @@ export function SkillsManagementPanel() {
       if (!res.ok) throw new Error('Failed to delete skill');
       setSkills(skills.filter(s => s.id !== id));
     } catch (err: any) {
-      alert(err.message);
+      dialog.alert('Skill Delete Error', err.message);
     }
   };
 
@@ -89,7 +97,7 @@ export function SkillsManagementPanel() {
       setEditingSkill(null);
       setIsCreating(false);
     } catch (err: any) {
-      alert(err.message);
+      dialog.alert('Skill Save Error', err.message);
     }
   };
 
@@ -105,11 +113,18 @@ export function SkillsManagementPanel() {
     });
   };
 
+  useEffect(() => {
+    const handleAddSkill = () => {
+      openCreateModal();
+    };
+    window.addEventListener('trigger-add-skill', handleAddSkill);
+    return () => {
+      window.removeEventListener('trigger-add-skill', handleAddSkill);
+    };
+  }, []);
+
   return (
     <div className="skills-panel">
-      <div className="skills-panel-header" style={{ borderBottom: 'none', paddingBottom: 0, justifyContent: 'flex-end' }}>
-        <button className="add-skill-btn" onClick={openCreateModal}>+ Add Skill</button>
-      </div>
 
       <div className="skills-list">
         {loading && <div className="skills-loading">Loading skills...</div>}

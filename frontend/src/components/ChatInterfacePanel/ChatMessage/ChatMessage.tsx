@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { useDialog } from '../../ConfirmDialog/DialogContext';
 import './ChatMessage.css';
 
 interface ChatMessageProps {
@@ -140,6 +141,8 @@ export function ChatMessage({
 }: ChatMessageProps) {
   const isModel = role === 'model';
   const chronologicalBlocks = isModel ? parseChronologicalBlocks(content) : [{ type: 'text' as const, content, isThinkingActive: false }];
+
+  const dialog = useDialog();
 
   const [expandedDocIdx, setExpandedDocIdx] = useState<number | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -298,8 +301,13 @@ export function ChatMessage({
                 </svg>
               )}
             </button>
-            <button className="msg-action-btn edit-btn-icon" onClick={() => { 
-              if (window.confirm("Are you sure you want to edit this message? All subsequent messages will be discarded.")) {
+            <button className="msg-action-btn edit-btn-icon" onClick={async () => { 
+              const confirmed = await dialog.confirm(
+                "Edit Message?",
+                "Are you sure you want to edit this message? All subsequent messages will be discarded.",
+                { confirmLabel: "Edit", danger: true }
+              );
+              if (confirmed) {
                 setIsEditing(true); 
                 setEditValue(content); 
               }
@@ -495,12 +503,12 @@ export function ChatMessage({
                                     await navigator.share({ title: 'OrchAI Response', text: content });
                                     triggerAction('shared');
                                   } else {
-                                    alert("Native sharing requires a secure HTTPS connection or isn't supported on this browser.");
+                                    await dialog.alert("Share Error", "Native sharing requires a secure HTTPS connection or isn't supported on this browser.");
                                   }
                                 } catch (e: any) {
                                   // Ignore user cancellation, but alert on actual errors
                                   if (e.name !== 'AbortError') {
-                                    alert(`Native share error: ${e.message}`);
+                                    await dialog.alert("Share Error", `Native share error: ${e.message}`);
                                   }
                                 }
                                 setShowShareModal(false);

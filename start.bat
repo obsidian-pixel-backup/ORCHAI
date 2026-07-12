@@ -9,15 +9,20 @@ echo.
 set "ORCHAI_ROOT=%~dp0"
 
 :: ===== Step 0: Bootstrap Ollama if not running =====
-echo [1/4] Checking Ollama service status...
-netstat -ano | findstr ":11434" | findstr "LISTENING" >nul 2>&1
-if ERRORLEVEL 1 (
-    echo Starting Ollama background server...
-    start /B ollama serve >nul 2>&1
-    :: Wait a moment for server initialization
-    timeout /t 3 /nobreak >nul
+set "PROVIDER=%~1"
+if /i "%PROVIDER%"=="hyperspace" (
+    echo [1/4] Bypassing Ollama boot for Hyperspace provider...
 ) else (
-    echo Ollama server is already running.
+    echo [1/4] Checking Ollama service status...
+    netstat -ano | findstr ":11434" | findstr "LISTENING" >nul 2>&1
+    if ERRORLEVEL 1 (
+        echo Starting Ollama background server...
+        start /B ollama serve >nul 2>&1
+        :: Wait a moment for server initialization
+        timeout /t 3 /nobreak >nul
+    ) else (
+        echo Ollama server is already running.
+    )
 )
 echo.
 

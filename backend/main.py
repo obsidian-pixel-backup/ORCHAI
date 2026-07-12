@@ -125,9 +125,12 @@ async def lifespan(app: FastAPI):
     logger = logging.getLogger("orchai")
     logger.info("ORCHAI Backend starting up...")
     
-    # Internal fallback to ensure Ollama is running
-    ensure_ollama_running()
+    # Import and start our new Distributed Inference Cluster Manager
+    from cluster_manager import cluster_manager
+    asyncio.create_task(cluster_manager.start_distributed_cluster())
     
+    # Internal fallback to ensure Ollama is running (legacy support)
+    ensure_ollama_running()
     global audio_listener, screen_watcher, main_loop
     main_loop = asyncio.get_running_loop()
     

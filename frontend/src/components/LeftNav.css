@@ -22,7 +22,11 @@
   align-items: center;
   justify-content: space-between;
   padding: 16px 12px;
-  border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.08));
+  background: var(--glass-liquid-bg);
+  backdrop-filter: var(--glass-liquid-blur);
+  -webkit-backdrop-filter: var(--glass-liquid-blur);
+  border-bottom: 1px solid var(--glass-liquid-border);
+  box-shadow: var(--glass-liquid-shadow);
 }
 
 .logo-text {
@@ -70,7 +74,7 @@
   background: transparent;
   color: var(--text-secondary, #94a3b8);
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 7px;
   transition: all 0.15s ease;
   text-align: left;
   font-size: 13px;
@@ -120,7 +124,6 @@
   border-radius: 6px;
   font-size: 12px;
   white-space: nowrap;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
   z-index: 10;
 }
@@ -150,7 +153,7 @@
   background: transparent;
   color: var(--text-secondary, #94a3b8);
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 7px;
   transition: all 0.15s ease;
 }
 

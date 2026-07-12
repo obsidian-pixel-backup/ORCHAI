@@ -83,6 +83,7 @@ class PersonaUpdate(BaseModel):
     session_id: str
     persona_state: str
     dynamic_persona: Optional[bool] = None
+    feedback: Optional[str] = None
 
 
 
@@ -126,6 +127,7 @@ async def get_world_state(session_id: str = "default"):
     return {
         "world_state": orch.world_state,
         "persona_state": orch.persona_state,
+        "emotional_state": orch.emotional_state,
         "stats": orch.get_stats(),
         "config": {
             "active_window_limit": orch.active_window_limit,
@@ -133,6 +135,16 @@ async def get_world_state(session_id: str = "default"):
             "semantic_recall": orch.semantic_recall,
             "dynamic_persona": orch.dynamic_persona
         }
+    }
+
+
+@router.get("/session/{session_id}/messages")
+async def get_session_messages(session_id: str):
+    """Retrieve the complete persistent message history for a session from the database."""
+    orch = get_orchestrator(session_id)
+    return {
+        "session_id": session_id,
+        "messages": orch.messages
     }
 
 
@@ -184,13 +196,29 @@ async def update_config(payload: ConfigUpdate):
 
 @router.post("/persona")
 async def update_persona(payload: PersonaUpdate):
-    """Manually update or edit the model's evolved character/persona guidelines."""
+    """Manually update or edit the model's evolved character/persona guidelines, or push back on drift."""
     orch = get_orchestrator(payload.session_id)
-    orch.persona_state = payload.persona_state
+    
+    status_msg = "success"
+    if payload.feedback:
+        fb = payload.feedback.lower()
+        if "drift" in fb or "revert" in fb or "rollback" in fb or "wrong" in fb:
+            success = await orch.rollback_persona()
+            if success:
+                status_msg = f"Rolled back to generation {orch._persona_generation} due to drift feedback."
+            else:
+                status_msg = "No persona history available to roll back."
+        else:
+            orch.persona_state = payload.persona_state + f"\n\n#### USER DIRECT CORRECTIVE FEEDBACK\n- Adhere to: {payload.feedback}"
+            status_msg = "Corrective feedback appended to guidelines."
+    else:
+        orch.persona_state = payload.persona_state
+
     if payload.dynamic_persona is not None:
         orch.dynamic_persona = payload.dynamic_persona
+        
     return {
-        "status": "success",
+        "status": status_msg,
         "persona_state": orch.persona_state,
         "dynamic_persona": orch.dynamic_persona,
         "stats": orch.get_stats()
@@ -652,8 +680,11 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
     model = payload.get("model", "north-mini-code-1.0:q4_K_M")
     raw_messages = payload.get("messages", [])
     options = payload.get("options", {})
+    provider = payload.get("provider", "ollama")
 
     orch = get_orchestrator(session_id)
+    orch.last_model = payload.get("model", "llama3.1:latest")
+    orch.last_provider = provider
 
     # 1. Sync orchestrator's local history with the incoming messages array
     orch.sync_frontend_state(raw_messages)
@@ -669,20 +700,22 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
     tools = get_available_tools()
     
-    # Detect model capabilities once
+    # Detect model capabilities once.
+    # For Hyperspace (OpenAI-compatible), assume full capability since there
+    # is no /api/show endpoint.  For local Ollama, probe the model manifest.
     model_supports_tools = True
     model_supports_thinking = True
-    try:
-        import httpx
-        async with httpx.AsyncClient() as c:
-            show_res = await c.post(f"{OLLAMA_BASE_URL}/api/show", json={"name": model})
-            if show_res.status_code == 200:
-                caps = show_res.json().get("capabilities", []) or []
-                if isinstance(caps, list) and caps:
-                    model_supports_tools = "tools" in caps
-                    model_supports_thinking = "thinking" in caps
-    except Exception:
-        pass
+    if provider != "hyperspace":
+        try:
+            async with httpx.AsyncClient() as c:
+                show_res = await c.post(f"{OLLAMA_BASE_URL}/api/show", json={"name": model})
+                if show_res.status_code == 200:
+                    caps = show_res.json().get("capabilities", []) or []
+                    if isinstance(caps, list) and caps:
+                        model_supports_tools = "tools" in caps
+                        model_supports_thinking = "thinking" in caps
+        except Exception:
+            pass
 
     # 3. Intercept & Orchestrate: Build optimal context prompt
     orchestrated_messages = orch.build_orchestrated_prompt(last_user_query, model_supports_tools=model_supports_tools, tools=tools)
@@ -740,7 +773,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         scrape_page = None
 
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=None, write=None, pool=None)) as client:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=None, write=None, pool=None), limits=httpx.Limits(max_keepalive_connections=0)) as client:
             chronological_thinking_segments = []
 
             async def _execute_tool(func_name: str, func_args: dict) -> str:
@@ -761,7 +794,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     )
                     
                     if delegate_to_subagent:
-                        return await delegate_to_subagent(role, task, model=model)
+                        return await delegate_to_subagent(role, task, model=model, provider=provider)
                     return "Error: sub_agents module could not be loaded."
                     
                 elif func_name == "get_persona":
@@ -1062,17 +1095,105 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     )
                     break
 
-                # 4. Formulate the official Ollama payload
-                ollama_payload = {
-                    "model": model,
-                    "messages": orchestrated_messages,
-                    "stream": True,
-                    "options": merged_options,
-                }
-                if model_supports_thinking:
-                    ollama_payload["think"] = True
-                if model_supports_tools:
-                    ollama_payload["tools"] = tools
+                if provider == "hyperspace":
+                    req_payload = {
+                        "model": model,
+                        "messages": orchestrated_messages,
+                        "stream": True,
+                    }
+                    if merged_options.get("temperature") is not None:
+                        req_payload["temperature"] = merged_options["temperature"]
+                    if merged_options.get("top_p") is not None:
+                        req_payload["top_p"] = merged_options["top_p"]
+                    if model_supports_tools:
+                        req_payload["tools"] = tools
+                    
+                    # Dynamically resolve and ensure the cluster is running the right model
+                    import shutil
+                    import logging
+                    
+                    logging.info(f"[HYPERSPACE] Resolving model path for: {model}")
+                    
+                    def get_ollama_executable() -> str:
+                        path_executable = shutil.which("ollama")
+                        if path_executable:
+                            return path_executable
+                        if os.name == 'nt':
+                            local_app_data = os.environ.get('LOCALAPPDATA')
+                            if local_app_data:
+                                fallback = os.path.join(local_app_data, 'Programs', 'Ollama', 'ollama.exe')
+                                if os.path.exists(fallback):
+                                    return fallback
+                        return "ollama"
+                    
+                    async def resolve_ollama_model_path(model_name: str) -> str:
+                        try:
+                            ollama_bin = get_ollama_executable()
+                            logging.info(f"[HYPERSPACE] Spawning: {ollama_bin} show --modelfile {model_name}")
+                            
+                            import subprocess
+                            def run_ollama_show():
+                                return subprocess.run(
+                                    [ollama_bin, "show", "--modelfile", model_name],
+                                    capture_output=True,
+                                    text=True,
+                                    check=False,
+                                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                                )
+                                
+                            proc = await asyncio.to_thread(run_ollama_show)
+                            
+                            paths = []
+                            logging.info(f"[HYPERSPACE] ollama show exit status: {proc.returncode}")
+                            if proc.returncode == 0:
+                                for line in proc.stdout.splitlines():
+                                    if line.startswith("FROM "):
+                                        path = line.split("FROM ")[1].strip()
+                                        if os.path.exists(path):
+                                            paths.append(path)
+                                            logging.info(f"[HYPERSPACE] Found GGUF blob: {path} ({os.path.getsize(path) / 1e9:.1f} GB)")
+                            else:
+                                logging.error(f"[HYPERSPACE] ERROR: ollama show returned {proc.returncode}: {proc.stderr}")
+                            if paths:
+                                best = max(paths, key=os.path.getsize)
+                                logging.info(f"[HYPERSPACE] Selected model file: {best}")
+                                return best
+                        except Exception as e:
+                            import traceback
+                            logging.error(f"[HYPERSPACE] ERROR resolving model path: {e}\nTraceback:\n{traceback.format_exc()}")
+                        return ""
+                    
+                    gguf_path = await resolve_ollama_model_path(model)
+                    
+                    if not gguf_path:
+                        logging.error(f"[HYPERSPACE] FAILED: Could not resolve GGUF path for model '{model}'")
+                        raise httpx.ConnectError(f"Could not resolve GGUF path for model '{model}'")
+                    
+                    logging.info(f"[HYPERSPACE] Calling ensure_running with: {gguf_path}")
+                    from cluster_manager import cluster_manager
+                    cluster_ready = await cluster_manager.ensure_running(gguf_path)
+                    logging.info(f"[HYPERSPACE] ensure_running returned: {cluster_ready}")
+                    
+                    if not cluster_ready:
+                        logging.error(f"[HYPERSPACE] FAILED: Cluster not ready after ensure_running")
+                        raise httpx.ConnectError("Cluster master node failed to start")
+                    
+                    import os
+                    base_url = os.getenv("HYPERSPACE_URL", "http://127.0.0.1:8081")
+                    target_url = f"{base_url}/v1/chat/completions"
+                    logging.info(f"[HYPERSPACE] Sending request to: {target_url}")
+                else:
+                    req_payload = {
+                        "model": model,
+                        "messages": orchestrated_messages,
+                        "stream": True,
+                        "options": merged_options,
+                    }
+                    if model_supports_thinking:
+                        req_payload["think"] = True
+                    if model_supports_tools:
+                        req_payload["tools"] = tools
+                    target_url = f"{OLLAMA_BASE_URL}/api/chat"
 
                 full_content = ""
                 full_thinking = ""
@@ -1088,8 +1209,8 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
                 async with client.stream(
                     "POST",
-                    f"{OLLAMA_BASE_URL}/api/chat",
-                    json=ollama_payload,
+                    target_url,
+                    json=req_payload,
                 ) as response:
                     if response.status_code != 200:
                         error_text = await response.aread()
@@ -1097,19 +1218,68 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                         try:
                             error_json = json.loads(error_msg)
                             if "error" in error_json:
-                                error_msg = error_json["error"]
+                                err_val = error_json["error"]
+                                if isinstance(err_val, dict) and "message" in err_val:
+                                    error_msg = err_val["message"]
+                                else:
+                                    error_msg = str(err_val)
+                            elif "message" in error_json:
+                                error_msg = error_json["message"]
                         except json.JSONDecodeError:
                             pass
-                        raise Exception(f"Ollama returned {response.status_code}: {error_msg}")
+                        provider_name = "Hyperspace" if provider == "hyperspace" else "Ollama"
+                        clean_msg = f"{provider_name} returned {response.status_code}: {error_msg}"
+                        # Send a clean error to the frontend instead of raising a traceback
+                        await manager.send_personal_message(
+                            json.dumps({
+                                "type": "error",
+                                "id": msg_id,
+                                "role": "model",
+                                "content": f"Error: {clean_msg}",
+                                "done": True,
+                            }),
+                            websocket,
+                        )
+                        return
 
                     is_thinking = False
                     async for line in response.aiter_lines():
-                        if not line.strip():
+                        line = line.strip()
+                        if not line:
                             continue
-                        try:
-                            chunk = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
+                            
+                        if provider == "hyperspace":
+                            if line.startswith("data: "):
+                                data_str = line[6:]
+                                if data_str == "[DONE]":
+                                    chunk = {"done": True}
+                                else:
+                                    try:
+                                        data_json = json.loads(data_str)
+                                        choice = data_json.get("choices", [{}])[0]
+                                        delta = choice.get("delta", {})
+                                        msg = {"content": delta.get("content", "")}
+                                        # Extract OpenAI-style tool_calls from delta
+                                        if "tool_calls" in delta:
+                                            msg["tool_calls"] = [
+                                                {"function": {"name": tc["function"]["name"],
+                                                              "arguments": json.loads(tc["function"].get("arguments", "{}")) if isinstance(tc["function"].get("arguments"), str) else tc["function"].get("arguments", {})}}
+                                                for tc in delta["tool_calls"] if "function" in tc
+                                            ]
+                                        # Detect finish_reason to synthesize a done signal
+                                        if choice.get("finish_reason") is not None:
+                                            chunk = {"message": msg, "done": True}
+                                        else:
+                                            chunk = {"message": msg}
+                                    except (json.JSONDecodeError, KeyError, IndexError):
+                                        continue
+                            else:
+                                continue
+                        else:
+                            try:
+                                chunk = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue
 
                         if "error" in chunk:
                             raise Exception(chunk["error"])
@@ -1280,7 +1450,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                             final_eval_count = overall_token_count
                             final_tps = tokens_per_sec
 
-                                # Generic fallback parsers for models without native tool parsing
+                # Generic fallback parsers for models without native tool parsing
                 if not full_tool_calls and full_content:
                     import re
                     
@@ -1597,6 +1767,63 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
                 # No tool calls, finish normally
                 else:
+                    if final_chunk.get("done_reason") == "length":
+                        orch.add_message(role="assistant", content=full_content)
+                        prompt_msg = "\n\n> [!WARNING]\n> **System:** Your response was cut off due to length limits. Please type 'continue' to resume exactly from where you left off.\n"
+                        orch.add_message(role="user", content=prompt_msg)
+                        
+                        await manager.send_personal_message(
+                            json.dumps({
+                                "type": "stream",
+                                "id": msg_id,
+                                "role": "model",
+                                "content": prompt_msg,
+                                "done": False,
+                                "stats": {
+                                    "tokens": overall_token_count,
+                                    "content_tokens": overall_content_token_count,
+                                    "thinking_tokens": overall_thinking_token_count,
+                                    "user_input_tokens": user_input_tokens,
+                                    "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
+                                    "tokens_per_second": round(final_tps, 1) if 'final_tps' in locals() else 0,
+                                    "elapsed": round(total_time_spent_generating, 2),
+                                }
+                            }),
+                            websocket,
+                        )
+                        
+                        if orch.dynamic_consolidation:
+                            await orch.consolidate_memory_background(model, provider=provider)
+                        if orch.dynamic_persona:
+                            await orch.evolve_persona_background(model, provider=provider)
+
+                        context_stats = orch.get_stats()
+                        await manager.send_personal_message(
+                            json.dumps({
+                                "type": "stream_end",
+                                "id": msg_id,
+                                "role": "model",
+                                "content": "",
+                                "thinking": ("\n\n---\n\n".join(chronological_thinking_segments + ([full_thinking] if full_thinking else []))) if chronological_thinking_segments else full_thinking,
+                                "done": True,
+                                "stats": {
+                                    "tokens": final_eval_count,
+                                    "content_tokens": overall_content_token_count,
+                                    "thinking_tokens": overall_thinking_token_count,
+                                    "user_input_tokens": user_input_tokens,
+                                    "background_input_tokens": max(0, overall_prompt_eval_count - user_input_tokens) if overall_prompt_eval_count > 0 else 0,
+                                    "tokens_per_second": round(final_tps, 1),
+                                    "elapsed": round(total_time_spent_generating, 2),
+                                    "model": model,
+                                    "prompt_eval_count": overall_prompt_eval_count,
+                                },
+                                "context_stats": context_stats,
+                                "world_state": orch.world_state,
+                            }),
+                            websocket,
+                        )
+                        break
+
                     if overall_content_token_count == 0 and empty_response_count < 2:
                         empty_response_count += 1
                         orch.add_message(role="assistant", content=full_content)
@@ -1638,9 +1865,9 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
 
                     # 5. Trigger asynchronous memory consolidation and persona evolution in the background
                     if orch.dynamic_consolidation:
-                        await orch.consolidate_memory_background(model)
+                        await orch.consolidate_memory_background(model, provider=provider)
                     if orch.dynamic_persona:
-                        await orch.evolve_persona_background(model)
+                        await orch.evolve_persona_background(model, provider=provider)
 
                     # Get latest stats to return to frontend
                     context_stats = orch.get_stats()
@@ -1671,38 +1898,54 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                     )
                     break # Exit the while True loop
 
-    except httpx.ConnectError:
-        try:
-            import subprocess
-            import platform
-            print("Starting Ollama background server (internal fallback)...")
-            if platform.system() == "Windows":
-                subprocess.Popen(
-                    ["ollama", "serve"],
-                    creationflags=subprocess.CREATE_NO_WINDOW | 0x00000008,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-            else:
-                subprocess.Popen(
-                    ["ollama", "serve"],
-                    start_new_session=True,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL
-                )
-        except Exception as e:
-            print(f"Failed to start Ollama on ConnectError: {e}")
-            
-        await manager.send_personal_message(
-            json.dumps({
-                "type": "error",
-                "id": msg_id,
-                "role": "model",
-                "content": "Could not connect to Ollama. We've initiated the Ollama service in the background. Please try your request again in a few seconds.",
-                "done": True,
-            }),
-            websocket,
-        )
+    except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError) as conn_err:
+        import traceback
+        print(f"[HYPERSPACE] CONNECTION ERROR: {conn_err}")
+        print(f"[HYPERSPACE] Traceback:\n{traceback.format_exc()}")
+        if provider == "hyperspace":
+            err_msg = f"Could not connect to Hyperspace node: {conn_err}"
+            await manager.send_personal_message(
+                json.dumps({
+                    "type": "error",
+                    "id": msg_id,
+                    "role": "model",
+                    "content": err_msg,
+                    "done": True,
+                }),
+                websocket,
+            )
+        else:
+            try:
+                import subprocess
+                import platform
+                print("Starting Ollama background server (internal fallback)...")
+                if platform.system() == "Windows":
+                    subprocess.Popen(
+                        ["ollama", "serve"],
+                        creationflags=subprocess.CREATE_NO_WINDOW | 0x00000008,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                else:
+                    subprocess.Popen(
+                        ["ollama", "serve"],
+                        start_new_session=True,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+            except Exception as e:
+                print(f"Failed to start Ollama on ConnectError: {e}")
+                
+            await manager.send_personal_message(
+                json.dumps({
+                    "type": "error",
+                    "id": msg_id,
+                    "role": "model",
+                    "content": "Could not connect to Ollama. We've initiated the Ollama service in the background. Please try your request again in a few seconds.",
+                    "done": True,
+                }),
+                websocket,
+            )
     except Exception as e:
         import traceback
         err_msg = traceback.format_exc()
@@ -1711,7 +1954,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
                 "type": "error",
                 "id": msg_id,
                 "role": "model",
-                "content": f"Error communicating with Ollama: {err_msg}",
+                "content": f"Error communicating with {'Hyperspace' if provider == 'hyperspace' else 'Ollama'}: {err_msg}",
                 "done": True,
             }),
             websocket,
@@ -1784,7 +2027,7 @@ async def list_models():
                 models_info = await asyncio.gather(*(check_reasoning(name) for name in model_names))
                 return {"models": list(models_info)}
             return {"models": [], "error": f"Ollama returned status {response.status_code}"}
-    except httpx.ConnectError:
+    except (httpx.ConnectError, httpx.RemoteProtocolError, httpx.ReadError):
         try:
             import subprocess
             import platform

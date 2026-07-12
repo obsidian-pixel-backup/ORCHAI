@@ -35,8 +35,7 @@
   background: var(--user-msg-bg);
   color: var(--user-msg-text);
   padding: 12px 20px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border-radius: 7px;
 }
 
 .user-bubble .markdown-container p,
@@ -212,12 +211,11 @@
 .stats-detail-card {
   background-color: var(--panel-bg);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 7px;
   padding: 10px 14px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .stats-card-label {
@@ -495,8 +493,9 @@
 .share-modal-overlay {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
-  background-color: var(--overlay-bg);
-  backdrop-filter: blur(4px);
+  background: var(--overlay-bg-glass);
+  backdrop-filter: var(--glass-blur-saturate);
+  -webkit-backdrop-filter: var(--glass-blur-saturate);
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -509,10 +508,13 @@
   position: relative;
   width: 90%;
   max-width: 600px;
-  background-color: var(--panel-bg, #ffffff);
-  border-radius: 24px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-saturate);
+  -webkit-backdrop-filter: var(--glass-blur-saturate);
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
   padding: 40px 32px 32px 32px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--glass-shadow);
   display: flex;
   flex-direction: column;
   animation: popInModal 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -526,14 +528,16 @@
   transform: translateX(-50%);
   width: 56px;
   height: 56px;
-  background-color: var(--panel-bg, #ffffff);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-saturate);
+  -webkit-backdrop-filter: var(--glass-blur-saturate);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  box-shadow: var(--glass-shadow);
   color: var(--text-primary);
-  border: 4px solid var(--body-bg, #f3f4f6);
+  border: 1px solid var(--glass-border);
 }
 
 /* Close Button */
@@ -634,7 +638,7 @@
   display: flex;
   flex-direction: column;
   background-color: var(--input-bg);
-  border-radius: 12px;
+  border-radius: 7px;
   padding: 12px 16px;
   overflow-y: auto;
   position: relative;
@@ -686,7 +690,6 @@
   align-items: center;
   justify-content: center;
   color: white;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
   flex-shrink: 0;
 }
 
@@ -726,7 +729,7 @@
 .tool-approval-request {
   background-color: rgba(245, 158, 11, 0.1);
   border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: 8px;
+  border-radius: 7px;
   margin: 12px 0;
   overflow: hidden;
 }

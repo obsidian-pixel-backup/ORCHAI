@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import './MemoryHubPanel.css';
+import { useDialog } from './ConfirmDialog/DialogContext';
 
 interface ContextStats {
   active_tokens: number;
@@ -24,6 +25,7 @@ interface MemoryHubPanelProps {
 }
 
 export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) {
+  const dialog = useDialog();
   // Config state
   const [activeLimit, setActiveLimit] = useState<number>(2000);
   const [dynamicConsolidation, setDynamicConsolidation] = useState<boolean>(true);
@@ -33,6 +35,7 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
   // Backend sync state
   const [worldState, setWorldState] = useState<string>('');
   const [personaState, setPersonaState] = useState<string>('');
+  const [emotionalState, setEmotionalState] = useState<string>('');
   const [contextStats, setContextStats] = useState<ContextStats>({
     active_tokens: 0,
     archived_tokens: 0,
@@ -63,6 +66,7 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
         setEditedState(data.world_state);
         setPersonaState(data.persona_state || '');
         setEditedPersonaState(data.persona_state || '');
+        setEmotionalState(data.emotional_state || '');
         if (data.stats) {
           setContextStats(data.stats);
         }
@@ -86,6 +90,16 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
     fetchWorldState(1);
   }, [chatId, wsState, stats?.tokens]);
 
+  useEffect(() => {
+    const handleConfigUpdated = () => {
+      fetchWorldState(1);
+    };
+    window.addEventListener('orchai-config-updated', handleConfigUpdated);
+    return () => {
+      window.removeEventListener('orchai-config-updated', handleConfigUpdated);
+    };
+  }, [chatId]);
+
   // Update backend config when states change
   const saveConfig = async (limit: number, consol: boolean, recall: boolean, persona: boolean) => {
     try {
@@ -100,11 +114,13 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
           dynamic_persona: persona,
         }),
       });
+      window.dispatchEvent(new CustomEvent('orchai-config-updated'));
       fetchWorldState();
     } catch (err) {
       console.error('Failed to save config', err);
     }
   };
+
 
   const handleLimitChange = (val: number) => {
     setActiveLimit(val);
@@ -168,6 +184,37 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
       }
     } catch (err) {
       console.error('Failed to save edited persona state', err);
+    }
+  };
+
+  // Handle persona rollback
+  const handleRollbackPersona = async () => {
+    const confirmed = await dialog.confirm(
+      "Rollback Persona?",
+      "Are you sure you want to rollback to the previous persona state? This will discard the latest evolution steps.",
+      { confirmLabel: "Rollback", danger: true }
+    );
+    if (!confirmed) {
+      return;
+    }
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/chat/persona', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: chatId,
+          persona_state: personaState,
+          feedback: "this drift doesn't feel right"
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPersonaState(data.persona_state);
+        setEditedPersonaState(data.persona_state);
+        fetchWorldState(1);
+      }
+    } catch (err) {
+      console.error('Failed to rollback persona state', err);
     }
   };
 
@@ -260,12 +307,12 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
           <input
             type="range"
             min="1000"
-            max="4000"
-            step="200"
+            max="100000"
+            step="1000"
             value={activeLimit}
             onChange={(e) => handleLimitChange(parseInt(e.target.value, 10))}
             style={{
-              background: `linear-gradient(to right, var(--accent-color) 0%, var(--accent-color) ${((activeLimit - 1000) / 3000) * 100}%, rgba(255, 255, 255, 0.1) ${((activeLimit - 1000) / 3000) * 100}%, rgba(255, 255, 255, 0.1) 100%)`
+              background: `linear-gradient(to right, var(--accent-color) 0%, var(--accent-color) ${Math.max(0, Math.min(100, ((activeLimit - 1000) / 99000) * 100))}%, rgba(255, 255, 255, 0.1) ${Math.max(0, Math.min(100, ((activeLimit - 1000) / 99000) * 100))}%, rgba(255, 255, 255, 0.1) 100%)`
             }}
             className="premium-slider"
           />
@@ -335,7 +382,10 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
         <div className="workspace-header">
           <h3>Evolving Agent Persona</h3>
           {!isEditingPersona ? (
-            <button className="edit-btn" onClick={() => setIsEditingPersona(true)}>Refine</button>
+            <div className="edit-actions">
+              <button className="edit-btn rollback-btn" onClick={handleRollbackPersona} title="Rollback last evolution step" style={{ marginRight: '8px' }}>Rollback</button>
+              <button className="edit-btn" onClick={() => setIsEditingPersona(true)}>Refine</button>
+            </div>
           ) : (
             <div className="edit-actions">
               <button className="cancel-btn" onClick={() => setIsEditingPersona(false)}>Cancel</button>
@@ -363,6 +413,18 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
           />
         )}
       </div>
+
+      {/* ── Live Evolving Agent Emotional State Workspace ── */}
+      {emotionalState && (
+        <div className="optimizer-section world-state-workspace emotional-state-workspace">
+          <div className="workspace-header">
+            <h3>Emotional State</h3>
+          </div>
+          <div className="world-state-card emotional-state-card">
+            <pre className="world-state-content">{emotionalState}</pre>
+          </div>
+        </div>
+      )}
 
       {/* ── Episodic Search Hub ── */}
       <div className="optimizer-section episodic-search">

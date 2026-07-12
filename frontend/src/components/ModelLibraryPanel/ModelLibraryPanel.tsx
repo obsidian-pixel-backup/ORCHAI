@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import './ModelLibraryPanel.css';
 import { ConfirmDialog } from '../ConfirmDialog/ConfirmDialog';
+import { CustomSelect } from '../CustomSelect/CustomSelect';
 
 const API = 'http://127.0.0.1:8000/api/models';
 
@@ -45,6 +46,9 @@ interface PullState {
 interface ModelLibraryPanelProps {
   onClose: () => void;
   onModelsChanged: () => void;
+  pulls: Record<string, PullState>;
+  onPull: (model: string) => void;
+  onDismissPull: (model: string) => void;
 }
 
 /**
@@ -92,7 +96,13 @@ function inferHFCapabilities(repo: string, pipeline_tag: string) {
   };
 }
 
-export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPanelProps) {
+export function ModelLibraryPanel({
+  onClose,
+  onModelsChanged,
+  pulls,
+  onPull,
+  onDismissPull
+}: ModelLibraryPanelProps) {
   const [tab, setTab] = useState<'installed' | 'discover'>('installed');
 
   // Installed models
@@ -124,9 +134,6 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
   const [files, setFiles] = useState<HFFile[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
   const [filesError, setFilesError] = useState<string | null>(null);
-
-  // Active downloads
-  const [pulls, setPulls] = useState<Record<string, PullState>>({});
 
   const fetchInstalled = useCallback(async () => {
     setInstalledLoading(true);
@@ -221,73 +228,13 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
     }
   };
 
-  const handlePull = async (model: string) => {
-    const p = pulls[model];
-    if (p && !p.error && p.percent < 100 && p.status !== 'done') return;
-    
-    setPulls(prev => ({ ...prev, [model]: { model, status: 'starting', percent: 0 } }));
-    
-    try {
-      const res = await fetch(`${API}/pull`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model }),
-      });
-      if (!res.ok) {
-        let detail = `The backend returned an error (HTTP ${res.status}).`;
-        try {
-          const j = await res.json();
-          if (j?.error || j?.detail) detail = j.error || j.detail;
-        } catch { /* body wasn't JSON */ }
-        setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: detail } }));
-        return;
-      }
-      if (!res.body) {
-        setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: 'The backend did not return a download progress stream.' } }));
-        return;
-      }
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      // eslint-disable-next-line no-constant-condition
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          let evt: any;
-          try { evt = JSON.parse(line); } catch { continue; }
-          if (evt.error) {
-            setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: evt.error } }));
-            return;
-          }
-          setPulls(prev => ({
-            ...prev,
-            [model]: {
-              model,
-              status: evt.status || 'downloading',
-              percent: typeof evt.percent === 'number' ? evt.percent : (evt.done ? 100 : 0),
-            }
-          }));
-        }
-      }
-      setPulls(prev => ({ ...prev, [model]: { model, status: 'done', percent: 100 } }));
-      await fetchInstalled();
-      onModelsChanged();
-    } catch (e: any) {
-      // A raw "Failed to fetch" / TypeError means the request never reached the
-      // backend (it was down, restarting, or the stream was interrupted).
-      const raw = e?.message || '';
-      const isNetwork = e?.name === 'TypeError' || /failed to fetch|network|load failed/i.test(raw);
-      const msg = isNetwork
-        ? 'Couldn’t reach the ORCHAI backend (it may be starting up or was interrupted). Wait a moment and try the download again.'
-        : (raw || 'Download failed.');
-      setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: msg } }));
+  // If a pull transitions to done, refresh the installed models list
+  useEffect(() => {
+    const donePulls = Object.values(pulls).filter(p => p.status === 'done');
+    if (donePulls.length > 0) {
+      fetchInstalled();
     }
-  };
+  }, [pulls, fetchInstalled]);
 
   const isPulling = (model: string) => {
     const p = pulls[model];
@@ -398,11 +345,7 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
                 {p.error ? 'Failed' : p.status === 'done' ? 'Installed ✓' : `${p.status} ${p.percent}%`}
               </span>
               {(p.error || p.status === 'done') && (
-                <button className="ml-pull-dismiss" onClick={() => setPulls(prev => {
-                  const next = { ...prev };
-                  delete next[p.model];
-                  return next;
-                })}>✕</button>
+                <button className="ml-pull-dismiss" onClick={() => onDismissPull(p.model)}>✕</button>
               )}
             </div>
             {!p.error && (
@@ -432,26 +375,28 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
                     value={installedSearch}
                     onChange={(e) => setInstalledSearch(e.target.value)}
                   />
-                  <select
+                  <CustomSelect
                     className="ml-installed-sort"
                     value={installedSort}
-                    onChange={(e) => setInstalledSort(e.target.value as any)}
-                  >
-                    <option value="size_desc">Largest First</option>
-                    <option value="size_asc">Smallest First</option>
-                    <option value="params_desc">Most Params</option>
-                    <option value="name">Name (A-Z)</option>
-                  </select>
-                  <select
+                    onChange={(val) => setInstalledSort(val as any)}
+                    options={[
+                      { value: 'size_desc', label: 'Largest First' },
+                      { value: 'size_asc', label: 'Smallest First' },
+                      { value: 'params_desc', label: 'Most Params' },
+                      { value: 'name', label: 'Name (A-Z)' }
+                    ]}
+                  />
+                  <CustomSelect
                     className="ml-installed-sort"
                     value={sizeFilter}
-                    onChange={(e) => setSizeFilter(e.target.value as any)}
-                  >
-                    <option value="all">All Sizes</option>
-                    <option value="small">&lt; 7B Params</option>
-                    <option value="medium">7B - 14B Params</option>
-                    <option value="large">&gt; 14B Params</option>
-                  </select>
+                    onChange={(val) => setSizeFilter(val as any)}
+                    options={[
+                      { value: 'all', label: 'All Sizes' },
+                      { value: 'small', label: '< 7B Params' },
+                      { value: 'medium', label: '7B - 14B Params' },
+                      { value: 'large', label: '> 14B Params' }
+                    ]}
+                  />
                   <div className="ml-installed-caps-filter">
                     <label>
                       <input type="checkbox" checked={capFilters.chat} onChange={(e) => setCapFilters(prev => ({ ...prev, chat: e.target.checked }))} />
@@ -537,26 +482,28 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
 
               {!searching && !searchError && (
                 <div className="ml-installed-controls" style={{ marginTop: '-4px' }}>
-                  <select
+                  <CustomSelect
                     className="ml-installed-sort"
                     value={discoverSort}
-                    onChange={(e) => setDiscoverSort(e.target.value as any)}
-                  >
-                    <option value="downloads">Most Downloaded</option>
-                    <option value="likes">Most Liked</option>
-                    <option value="params_desc">Most Params</option>
-                    <option value="name">Name (A-Z)</option>
-                  </select>
-                  <select
+                    onChange={(val) => setDiscoverSort(val as any)}
+                    options={[
+                      { value: 'downloads', label: 'Most Downloaded' },
+                      { value: 'likes', label: 'Most Liked' },
+                      { value: 'params_desc', label: 'Most Params' },
+                      { value: 'name', label: 'Name (A-Z)' }
+                    ]}
+                  />
+                  <CustomSelect
                     className="ml-installed-sort"
                     value={sizeFilter}
-                    onChange={(e) => setSizeFilter(e.target.value as any)}
-                  >
-                    <option value="all">All Sizes</option>
-                    <option value="small">&lt; 7B Params</option>
-                    <option value="medium">7B - 14B Params</option>
-                    <option value="large">&gt; 14B Params</option>
-                  </select>
+                    onChange={(val) => setSizeFilter(val as any)}
+                    options={[
+                      { value: 'all', label: 'All Sizes' },
+                      { value: 'small', label: '< 7B Params' },
+                      { value: 'medium', label: '7B - 14B Params' },
+                      { value: 'large', label: '> 14B Params' }
+                    ]}
+                  />
                   <div className="ml-installed-caps-filter">
                     <label>
                       <input type="checkbox" checked={capFilters.chat} onChange={(e) => setCapFilters(prev => ({ ...prev, chat: e.target.checked }))} />
@@ -615,7 +562,7 @@ export function ModelLibraryPanel({ onClose, onModelsChanged }: ModelLibraryPane
                           <span className="ml-file-size">{f.size_human}</span>
                           <button
                             className="ml-download-btn"
-                            onClick={() => handlePull(f.pull_model)}
+                            onClick={() => onPull(f.pull_model)}
                             disabled={isPulling(f.pull_model)}
                           >
                             {isPulling(f.pull_model) ? 'Downloading…' : 'Download'}

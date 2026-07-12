@@ -15,3 +15,6 @@ Pillow
 PyAudio
 python-multipart
 psutil
+paramiko
+python-dotenv
+watchfiles

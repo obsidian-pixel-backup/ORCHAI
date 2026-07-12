@@ -6,9 +6,11 @@ interface ContentDrawerProps {
   onClose: () => void;
   activeTab: string;
   children: React.ReactNode;
+  onNewChat?: () => void;
+  onAddSkill?: () => void;
 }
 
-export function ContentDrawer({ isOpen, onClose, activeTab, children }: ContentDrawerProps) {
+export function ContentDrawer({ isOpen, onClose, activeTab, children, onNewChat, onAddSkill }: ContentDrawerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(240);
   const [isResizing, setIsResizing] = useState(false);
@@ -83,6 +85,18 @@ export function ContentDrawer({ isOpen, onClose, activeTab, children }: ContentD
         <h2 className="drawer-title">
           {activeTab === 'chats' ? 'Chats' : activeTab === 'skills' ? 'Skills Library' : 'Memory Hub'}
         </h2>
+        <div className="drawer-header-actions" style={{ marginLeft: 'auto' }}>
+          {activeTab === 'chats' && onNewChat && (
+            <button className="drawer-action-btn" onClick={onNewChat} title="New Chat">
+              + New Chat
+            </button>
+          )}
+          {activeTab === 'skills' && onAddSkill && (
+            <button className="drawer-action-btn" onClick={onAddSkill} title="Add Skill">
+              + Add Skill
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Content */}

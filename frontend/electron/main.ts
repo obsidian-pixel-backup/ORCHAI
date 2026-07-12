@@ -67,9 +67,10 @@ function startPythonBackend() {
   // __dirname is frontend/electron during dev compilation, so backend is at ../../backend
   const backendPath = path.join(__dirname, '../../backend');
   
-  pythonProcess = spawn('python', ['main.py'], {
+  pythonProcess = spawn('python', ['-u', 'main.py'], {
     cwd: backendPath,
-    shell: true
+    shell: true,
+    env: { ...process.env, PYTHONUNBUFFERED: "1" }
   });
 
   pythonProcess.stdout.on('data', (data: any) => {

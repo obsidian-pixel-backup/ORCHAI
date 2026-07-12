@@ -8,7 +8,7 @@ try:
     from faster_whisper import WhisperModel
     import io
     AUDIO_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     sd = None
     np = None
     WhisperModel = None

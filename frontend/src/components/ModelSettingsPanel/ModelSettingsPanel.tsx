@@ -12,8 +12,6 @@ interface ModelSettingsPanelProps {
   onTopPChange: (val: number) => void;
   minP: number;
   onMinPChange: (val: number) => void;
-  maxTokens: number;
-  onMaxTokensChange: (tokens: number) => void;
   stats: {
     tokens_per_second: number;
     tokens: number;
@@ -22,6 +20,8 @@ interface ModelSettingsPanelProps {
   chatId: string;
   models: {name: string, supports_reasoning: boolean, supports_vision?: boolean, can_chat?: boolean}[];
   loadingModels: boolean;
+  inferenceProvider: string;
+  onProviderChange: (provider: string) => void;
 }
 
 export function ModelSettingsPanel({
@@ -35,14 +35,14 @@ export function ModelSettingsPanel({
   onTopPChange,
   minP,
   onMinPChange,
-  maxTokens,
-  onMaxTokensChange,
   // @ts-ignore
   stats,
   // @ts-ignore
   chatId,
   models,
-  loadingModels
+  loadingModels,
+  inferenceProvider,
+  onProviderChange
 }: ModelSettingsPanelProps) {
   const [fetchError, setFetchError] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -51,6 +51,86 @@ export function ModelSettingsPanel({
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [audioInstalled, setAudioInstalled] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Memory parameters state
+  const [activeLimit, setActiveLimit] = useState<number>(64000);
+  const [dynamicConsolidation, setDynamicConsolidation] = useState<boolean>(true);
+  const [semanticRecall, setSemanticRecall] = useState<boolean>(true);
+  const [dynamicPersona, setDynamicPersona] = useState<boolean>(true);
+
+  // Fetch current state from backend
+  const fetchWorldState = async () => {
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/chat/world-state?session_id=${chatId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.config) {
+          setActiveLimit(data.config.active_window_limit);
+          setDynamicConsolidation(data.config.dynamic_consolidation);
+          setSemanticRecall(data.config.semantic_recall);
+          setDynamicPersona(data.config.dynamic_persona !== undefined ? data.config.dynamic_persona : true);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch memory parameters config', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchWorldState();
+  }, [chatId]);
+
+  useEffect(() => {
+    const handleConfigUpdated = () => {
+      fetchWorldState();
+    };
+    window.addEventListener('orchai-config-updated', handleConfigUpdated);
+    return () => {
+      window.removeEventListener('orchai-config-updated', handleConfigUpdated);
+    };
+  }, [chatId]);
+
+  const saveConfig = async (limit: number, consol: boolean, recall: boolean, persona: boolean) => {
+    try {
+      await fetch('http://127.0.0.1:8000/api/chat/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: chatId,
+          active_window_limit: limit,
+          dynamic_consolidation: consol,
+          semantic_recall: recall,
+          dynamic_persona: persona,
+        }),
+      });
+      window.dispatchEvent(new CustomEvent('orchai-config-updated'));
+    } catch (err) {
+      console.error('Failed to save memory parameters config', err);
+    }
+  };
+
+  const handleLimitChange = (val: number) => {
+    setActiveLimit(val);
+    saveConfig(val, dynamicConsolidation, semanticRecall, dynamicPersona);
+  };
+
+  const handleToggleConsolidation = () => {
+    const nextVal = !dynamicConsolidation;
+    setDynamicConsolidation(nextVal);
+    saveConfig(activeLimit, nextVal, semanticRecall, dynamicPersona);
+  };
+
+  const handleToggleRecall = () => {
+    const nextVal = !semanticRecall;
+    setSemanticRecall(nextVal);
+    saveConfig(activeLimit, dynamicConsolidation, nextVal, dynamicPersona);
+  };
+
+  const handleTogglePersona = () => {
+    const nextVal = !dynamicPersona;
+    setDynamicPersona(nextVal);
+    saveConfig(activeLimit, dynamicConsolidation, semanticRecall, nextVal);
+  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -63,8 +143,6 @@ export function ModelSettingsPanel({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
-
-  const isUnlimited = true;
 
   const isReasoningModel = (modelName: string) => {
     if (!modelName) return false;
@@ -140,8 +218,29 @@ export function ModelSettingsPanel({
   return (
     <div className="model-settings-container">
       <div className="settings-content">
+        {/* ── Inference Provider ── */}
+        <div className="settings-section">
+          <h3>Inference Provider</h3>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '8px', marginBottom: '16px' }}>
+            <button 
+              className={`theme-toggle-btn ${inferenceProvider === 'ollama' ? 'active' : ''}`}
+              style={{ flex: 1, backgroundColor: inferenceProvider === 'ollama' ? 'var(--accent-color)' : 'var(--input-bg)', color: inferenceProvider === 'ollama' ? '#fff' : 'var(--text-primary)', border: '1px solid var(--border-color)', padding: '8px', borderRadius: '7px', cursor: 'pointer' }}
+              onClick={() => onProviderChange('ollama')}
+            >
+              Local (Ollama)
+            </button>
+            <button 
+              className={`theme-toggle-btn ${inferenceProvider === 'hyperspace' ? 'active' : ''}`}
+              style={{ flex: 1, backgroundColor: inferenceProvider === 'hyperspace' ? 'var(--accent-color)' : 'var(--input-bg)', color: inferenceProvider === 'hyperspace' ? '#fff' : 'var(--text-primary)', border: '1px solid var(--border-color)', padding: '8px', borderRadius: '7px', cursor: 'pointer' }}
+              onClick={() => onProviderChange('hyperspace')}
+            >
+              Distributed (Hyperspace AI)
+            </button>
+          </div>
+        </div>
+
         {/* ── Model Selection ── */}
-        <div className="settings-section" style={{ zIndex: 10 }}>
+        <div className="settings-section" style={{ zIndex: 10, opacity: inferenceProvider === 'hyperspace' ? 0.5 : 1, pointerEvents: inferenceProvider === 'hyperspace' ? 'none' : 'auto' }}>
           <h3>Model Selection</h3>
           {loadingModels && <div className="model-loading">Loading models…</div>}
           {!loadingModels && fetchError && (
@@ -211,42 +310,7 @@ export function ModelSettingsPanel({
               className="premium-slider"
             />
           </div>
-          <div className="param-slider">
-            <label>
-              <span>Max Tokens</span>
-              <span className={isUnlimited ? 'unlimited-badge' : ''}>
-                {isUnlimited ? 'Unlimited' : maxTokens}
-              </span>
-            </label>
-            <input
-              type="range"
-              min="100"
-              max="8192"
-              step="100"
-              value={isUnlimited ? 8192 : maxTokens}
-              onChange={(e) => {
-                const val = parseInt(e.target.value, 10);
-                onMaxTokensChange(val);
-              }}
-              disabled={isUnlimited}
-              className={`premium-slider ${isUnlimited ? 'disabled-slider' : ''}`}
-              style={{
-                background: isUnlimited
-                  ? 'rgba(255, 255, 255, 0.05)'
-                  : `linear-gradient(to right, var(--accent-color) 0%, var(--accent-color) ${((maxTokens - 100) / 8092) * 100}%, rgba(255, 255, 255, 0.1) ${((maxTokens - 100) / 8092) * 100}%, rgba(255, 255, 255, 0.1) 100%)`
-              }}
-            />
-            <label className="checkbox-container">
-              <input
-                type="checkbox"
-                className="checkbox-input"
-                checked={true}
-                disabled={true}
-                onChange={() => {}}
-              />
-              <span className="checkbox-label">Unlimited response length</span>
-            </label>
-          </div>
+
           <div className="param-slider">
             <label>
               <span>Repetition Penalty</span>
@@ -331,6 +395,54 @@ export function ModelSettingsPanel({
             </div>
           </div>
         )}
+
+
+        {/* ── Memory Parameters ── */}
+        <div className="settings-section">
+          <h3>Memory Parameters</h3>
+          <div className="param-slider">
+            <label>
+              <span>Active Trigger Limit</span>
+              <span>{activeLimit} t</span>
+            </label>
+            <input
+              type="range"
+              min="1000"
+              max="100000"
+              step="1000"
+              value={activeLimit}
+              onChange={(e) => handleLimitChange(parseInt(e.target.value, 10))}
+              style={{
+                background: `linear-gradient(to right, var(--accent-color) 0%, var(--accent-color) ${Math.max(0, Math.min(100, ((activeLimit - 1000) / 99000) * 100))}%, rgba(255, 255, 255, 0.1) ${Math.max(0, Math.min(100, ((activeLimit - 1000) / 99000) * 100))}%, rgba(255, 255, 255, 0.1) 100%)`
+              }}
+              className="premium-slider"
+            />
+          </div>
+
+          <div className="toggle-control" onClick={handleToggleConsolidation}>
+            <div className="toggle-info">
+              <div className="toggle-label">Dynamic Memory State</div>
+              <div className="toggle-desc">Asynchronously fold old turns into World State</div>
+            </div>
+            <button className={`toggle-switch ${dynamicConsolidation ? 'on' : 'off'}`} aria-label="Toggle Dynamic Memory State" />
+          </div>
+
+          <div className="toggle-control" onClick={handleToggleRecall}>
+            <div className="toggle-info">
+              <div className="toggle-label">Semantic Episodic Recall</div>
+              <div className="toggle-desc">Auto-retrieve past turns via local index (RAG)</div>
+            </div>
+            <button className={`toggle-switch ${semanticRecall ? 'on' : 'off'}`} aria-label="Toggle Semantic Episodic Recall" />
+          </div>
+
+          <div className="toggle-control" onClick={handleTogglePersona}>
+            <div className="toggle-info">
+              <div className="toggle-label">Dynamic Persona Evolution</div>
+              <div className="toggle-desc">Asynchronously refine character and style traits</div>
+            </div>
+            <button className={`toggle-switch ${dynamicPersona ? 'on' : 'off'}`} aria-label="Toggle Dynamic Persona Evolution" />
+          </div>
+        </div>
 
 
         {/* ── Sensory Input Telemetry ── */}

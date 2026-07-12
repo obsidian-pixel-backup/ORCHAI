@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import './App.css';
 import { ChatManagementPanel } from './components/ChatManagementPanel/ChatManagementPanel';
 import type { Message } from './components/ChatInterfacePanel/ChatInterfacePanel';
@@ -10,6 +10,41 @@ import { MemoryHubPanel } from './components/MemoryHubPanel';
 import { SkillsManagementPanel } from './components/SkillsManagementPanel/SkillsManagementPanel';
 import { AuxiliaryPane } from './components/AuxiliaryPane/AuxiliaryPane';
 import { ModelLibraryPanel } from './components/ModelLibraryPanel/ModelLibraryPanel';
+import { DialogProvider } from './components/ConfirmDialog/DialogContext';
+import { CustomSelect } from './components/CustomSelect/CustomSelect';
+
+export interface PullState {
+  model: string;
+  status: string;
+  percent: number;
+  error?: string;
+}
+
+interface Toast {
+  id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'error';
+}
+
+function friendlyModelLabel(model: string): string {
+  let base = model;
+  let quant = '';
+  const colon = base.lastIndexOf(':');
+  if (colon > -1) {
+    quant = base.slice(colon + 1);
+    base = base.slice(0, colon);
+  }
+  base = base.replace(/^hf\.co\//i, '');
+  const last = base.includes('/') ? base.split('/').pop()! : base;
+  const name = last
+    .replace(/-?GGUF$/i, '')
+    .replace(/[-_]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return quant ? `${name} · ${quant}` : name;
+}
+
 
 export interface Stats {
   tokens_per_second: number;
@@ -45,13 +80,12 @@ const INITIAL_CHAT: ChatSession = {
 
 type NavTab = 'chats' | 'memory' | 'skills';
 
-function App() {
+function AppContent() {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(0.7);
   const [repeatPenalty, setRepeatPenalty] = useState<number>(1.1);
   const [topP, setTopP] = useState<number>(0.9);
   const [minP, setMinP] = useState<number>(0.05);
-  const [maxTokens, setMaxTokens] = useState<number>(-1);
   const [isDrawerOpen, setIsDrawerOpen] = useState(true);
   const [isAuxiliaryPaneOpen, setIsAuxiliaryPaneOpen] = useState(false);
   const [activeNavTab, setActiveNavTab] = useState<NavTab>('chats');
@@ -66,6 +100,23 @@ function App() {
   const [language, setLanguage] = useState<string>(() => localStorage.getItem('orchai_lang') || 'en');
   const [models, setModels] = useState<{name: string, supports_reasoning: boolean, supports_vision?: boolean, can_chat?: boolean}[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
+  const [inferenceProvider, setInferenceProvider] = useState<string>(() => localStorage.getItem('orchai_provider') || 'ollama');
+
+  // Toasts for background events (like downloads)
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const addToast = useCallback((title: string, message: string, type: 'info' | 'success' | 'error' = 'info') => {
+    const id = `toast-${Date.now()}-${Math.random()}`;
+    setToasts(prev => [...prev, { id, title, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 5000);
+  }, []);
+
+  const [pulls, setPulls] = useState<Record<string, PullState>>({});
+  const pullsRef = useRef(pulls);
+  useEffect(() => {
+    pullsRef.current = pulls;
+  }, [pulls]);
 
   // Fetch the model list once and apply it (also picks a sensible default model).
   // Returns true on success so the mount effect can retry while the backend boots,
@@ -128,6 +179,94 @@ function App() {
     return () => { cancelled = true; };
   }, [refreshModels]);
 
+  const handlePull = useCallback(async (model: string) => {
+    const p = pullsRef.current[model];
+    if (p && !p.error && p.percent < 100 && p.status !== 'done') return;
+
+    setPulls(prev => ({ ...prev, [model]: { model, status: 'starting', percent: 0 } }));
+    addToast('Download Started', `Downloading ${friendlyModelLabel(model)}...`, 'info');
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/models/pull', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model }),
+      });
+      if (!res.ok) {
+        let detail = `The backend returned an error (HTTP ${res.status}).`;
+        try {
+          const j = await res.json();
+          if (j?.error || j?.detail) detail = j.error || j.detail;
+        } catch { /* body wasn't JSON */ }
+        setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: detail } }));
+        addToast('Download Failed', `Could not download ${friendlyModelLabel(model)}: ${detail}`, 'error');
+        return;
+      }
+      if (!res.body) {
+        const detail = 'The backend did not return a download progress stream.';
+        setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: detail } }));
+        addToast('Download Failed', `Could not download ${friendlyModelLabel(model)}: ${detail}`, 'error');
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          let evt: any;
+          try { evt = JSON.parse(line); } catch { continue; }
+          if (evt.error) {
+            setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: evt.error } }));
+            addToast('Download Failed', `Could not download ${friendlyModelLabel(model)}: ${evt.error}`, 'error');
+            return;
+          }
+          setPulls(prev => ({
+            ...prev,
+            [model]: {
+              model,
+              status: evt.status || 'downloading',
+              percent: typeof evt.percent === 'number' ? evt.percent : (evt.done ? 100 : 0),
+            }
+          }));
+        }
+      }
+      setPulls(prev => ({ ...prev, [model]: { model, status: 'done', percent: 100 } }));
+      addToast('Download Complete', `${friendlyModelLabel(model)} has been successfully installed.`, 'success');
+      
+      // Desktop notification
+      if (notificationsEnabled && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification('Model Download Complete', {
+          body: `${friendlyModelLabel(model)} is ready to use.`,
+        });
+      }
+      
+      refreshModels();
+    } catch (e: any) {
+      const raw = e?.message || '';
+      const isNetwork = e?.name === 'TypeError' || /failed to fetch|network|load failed/i.test(raw);
+      const msg = isNetwork
+        ? 'Couldn’t reach the ORCHAI backend (it may be starting up or was interrupted). Wait a moment and try the download again.'
+        : (raw || 'Download failed.');
+      setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: msg } }));
+      addToast('Download Failed', `Could not download ${friendlyModelLabel(model)}: ${msg}`, 'error');
+    }
+  }, [addToast, refreshModels, notificationsEnabled]);
+
+  const handleDismissPull = useCallback((model: string) => {
+    setPulls(prev => {
+      const next = { ...prev };
+      delete next[model];
+      return next;
+    });
+  }, []);
+
   useLayoutEffect(() => {
     document.documentElement.setAttribute('data-theme', isDarkTheme ? 'dark' : 'light');
     document.documentElement.setAttribute('data-compact', compactMode ? 'true' : 'false');
@@ -141,6 +280,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem('orchai_send_enter', String(sendOnEnter));
   }, [sendOnEnter]);
+
+  useEffect(() => {
+    localStorage.setItem('orchai_provider', inferenceProvider);
+  }, [inferenceProvider]);
 
   useEffect(() => {
     localStorage.setItem('orchai_notifications', String(notificationsEnabled));
@@ -190,6 +333,30 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem('orchai_active_chat_id', activeChatId);
+  }, [activeChatId]);
+
+  // Fetch messages from backend for active chat to sync dynamic/offline messages (like autonomous thoughts)
+  useEffect(() => {
+    let active = true;
+    const syncMessages = async () => {
+      try {
+        const res = await fetch(`http://127.0.0.1:8000/api/chat/session/${activeChatId}/messages`);
+        if (res.ok && active) {
+          const data = await res.json();
+          if (data.messages && data.messages.length > 0) {
+            setChats((prev) =>
+              prev.map((c) =>
+                c.id === activeChatId ? { ...c, messages: data.messages } : c
+              )
+            );
+          }
+        }
+      } catch (err) {
+        console.error('Failed to sync messages with backend:', err);
+      }
+    };
+    syncMessages();
+    return () => { active = false; };
   }, [activeChatId]);
 
   // Find active chat details
@@ -351,7 +518,6 @@ function App() {
       chats={chats.map(c => ({ id: c.id, title: c.title }))}
       activeChatId={activeChatId}
       onSelectChat={(id) => setActiveChatId(id)}
-      onNewChat={handleNewChat}
       onDeleteChat={handleDeleteChat}
       onRenameChat={handleRenameChat}
     />
@@ -369,6 +535,14 @@ function App() {
     <SkillsManagementPanel />
   );
 
+  const activeDownloads = Object.values(pulls).filter(
+    p => p.status !== 'done' && p.status !== 'error' && p.percent < 100
+  );
+  const activeDownloadsCount = activeDownloads.length;
+  const downloadProgress = activeDownloadsCount > 0
+    ? activeDownloads.reduce((sum, p) => sum + p.percent, 0) / activeDownloadsCount
+    : 0;
+
   return (
     <div className="app-container">
       {/* 1. Persistent Icon-Only Activity Bar (~56px) */}
@@ -377,6 +551,8 @@ function App() {
         onTabChange={(tab) => { setActiveNavTab(tab); if (!isDrawerOpen) setIsDrawerOpen(true); }}
         onSettingsClick={() => setShowSettingsModal(true)}
         onModelLibraryClick={() => setShowModelLibrary(true)}
+        activeDownloadsCount={activeDownloadsCount}
+        downloadProgress={downloadProgress}
       />
 
       {/* 2. Collapsible Content Drawer (~240px → 0) */}
@@ -384,6 +560,8 @@ function App() {
         isOpen={isDrawerOpen}
         onClose={() => setIsDrawerOpen(false)}
         activeTab={activeNavTab}
+        onNewChat={handleNewChat}
+        onAddSkill={() => window.dispatchEvent(new CustomEvent('trigger-add-skill'))}
       >
         {activeNavTab === 'chats' ? chatManagementPanel : activeNavTab === 'memory' ? memoryHubPanel : skillsManagementPanel}
       </ContentDrawer>
@@ -399,7 +577,6 @@ function App() {
           repeatPenalty={repeatPenalty}
           topP={topP}
           minP={minP}
-          maxTokens={maxTokens}
           onStatsUpdate={handleUpdateStats}
           isNavCollapsed={!isDrawerOpen}
           onBranchChat={(messageId) => handleBranchChat(activeChatId, messageId)}
@@ -410,6 +587,7 @@ function App() {
           onModelChange={setSelectedModel}
           isAuxiliaryPaneOpen={isAuxiliaryPaneOpen}
           onToggleAuxiliaryPane={() => setIsAuxiliaryPaneOpen(prev => !prev)}
+          inferenceProvider={inferenceProvider}
         />
       </main>
 
@@ -423,8 +601,17 @@ function App() {
       {/* Model Library (download from Hugging Face / manage disk) */}
       {showModelLibrary && (
         <ModelLibraryPanel
-          onClose={() => setShowModelLibrary(false)}
+          onClose={() => {
+            setShowModelLibrary(false);
+            const activeCount = Object.values(pulls).filter(p => p.status !== 'done' && p.status !== 'error' && p.percent < 100).length;
+            if (activeCount > 0) {
+              addToast('Download Continuing', 'Your model downloads will continue in the background.', 'info');
+            }
+          }}
           onModelsChanged={refreshModels}
+          pulls={pulls}
+          onPull={handlePull}
+          onDismissPull={handleDismissPull}
         />
       )}
 
@@ -454,12 +641,12 @@ function App() {
                 onTopPChange={setTopP}
                 minP={minP}
                 onMinPChange={setMinP}
-                maxTokens={maxTokens}
-                onMaxTokensChange={setMaxTokens}
                 stats={activeStats}
                 chatId={activeChatId}
                 models={models}
                 loadingModels={modelsLoading}
+                inferenceProvider={inferenceProvider}
+                onProviderChange={setInferenceProvider}
               />
             </div>
 
@@ -494,22 +681,23 @@ function App() {
 
               <div className="settings-section" style={{ marginTop: '28px' }}>
                 <h3 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '12px' }}>Language & Localization</h3>
-                <select 
+                <CustomSelect
                   value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--input-bg)', color: 'var(--text-primary)', fontSize: '14px', width: '100%', cursor: 'pointer', outline: 'none' }}
-                >
-                  <option value="en">English (US)</option>
-                  <option value="es">Español</option>
-                  <option value="fr">Français</option>
-                  <option value="de">Deutsch</option>
-                  <option value="zh">中文 (Simplified)</option>
-                </select>
+                  onChange={setLanguage}
+                  options={[
+                    { value: 'en', label: 'English (US)' },
+                    { value: 'es', label: 'Español' },
+                    { value: 'fr', label: 'Français' },
+                    { value: 'de', label: 'Deutsch' },
+                    { value: 'zh', label: '中文 (Simplified)' },
+                  ]}
+                  style={{ width: '100%' }}
+                />
               </div>
 
               <div className="settings-section" style={{ marginTop: '28px' }}>
                 <h3 style={{ fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-secondary)', marginBottom: '12px' }}>Sensory Status</h3>
-                <div id="sensory-status" style={{ fontSize: '14px', color: 'var(--text-secondary)', padding: '12px', background: 'var(--subtle-bg)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                <div id="sensory-status" style={{ fontSize: '14px', color: 'var(--text-secondary)', padding: '12px', background: 'var(--subtle-bg)', borderRadius: '7px', border: '1px solid var(--border-color)' }}>
                   Check backend for audio/vision status
                 </div>
               </div>
@@ -517,7 +705,35 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* Global Toast Notifications (e.g. background downloads) */}
+      {toasts.length > 0 && (
+        <div className="toast-container">
+          {toasts.map(toast => (
+            <div key={toast.id} className={`toast-card ${toast.type}`}>
+              <div className="toast-content">
+                <div className="toast-title">{toast.title}</div>
+                <div className="toast-message">{toast.message}</div>
+              </div>
+              <button
+                className="toast-close"
+                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <DialogProvider>
+      <AppContent />
+    </DialogProvider>
   );
 }
 

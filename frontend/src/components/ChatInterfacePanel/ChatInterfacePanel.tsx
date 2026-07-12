@@ -30,7 +30,6 @@ interface ChatInterfacePanelProps {
   repeatPenalty: number;
   topP: number;
   minP: number;
-  maxTokens: number;
   onStatsUpdate: (stats: { tokens_per_second: number; tokens: number; elapsed: number; prompt_eval_count?: number }) => void;
   isNavCollapsed: boolean;
   onBranchChat?: (messageId: string) => void;
@@ -41,6 +40,7 @@ interface ChatInterfacePanelProps {
   onModelChange?: (model: string) => void;
   isAuxiliaryPaneOpen?: boolean;
   onToggleAuxiliaryPane?: () => void;
+  inferenceProvider?: string;
 }
 
 const playModernPing = () => {
@@ -85,7 +85,6 @@ export function ChatInterfacePanel({
   repeatPenalty,
   topP,
   minP,
-  maxTokens,
   onStatsUpdate,
   isNavCollapsed: _,
   onBranchChat,
@@ -96,11 +95,14 @@ export function ChatInterfacePanel({
   onModelChange,
   isAuxiliaryPaneOpen,
   onToggleAuxiliaryPane,
+  inferenceProvider = 'ollama',
 }: ChatInterfacePanelProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [activeResponseId, setActiveResponseId] = useState<string | null>(null);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const [toasts, setToasts] = useState<{id: string, title: string, message: string}[]>([]);
+  const [queueTrigger, setQueueTrigger] = useState(0);
 
   const wsRef = useRef<WebSocket | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
@@ -118,6 +120,16 @@ export function ChatInterfacePanel({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Scroll the active navigator dot into view within the navigator track
+  useEffect(() => {
+    if (activeResponseId) {
+      const activeDot = document.querySelector('.navigator-dot.active');
+      if (activeDot) {
+        activeDot.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  }, [activeResponseId]);
+
   const [queuedMessages, setQueuedMessages] = useState<Message[]>([]);
   const [isQueuedCollapsed, setIsQueuedCollapsed] = useState(false);
   const queuedMessagesRef = useRef(queuedMessages);
@@ -128,9 +140,8 @@ export function ChatInterfacePanel({
   const repeatPenaltyRef = useRef(repeatPenalty);
   const topPRef = useRef(topP);
   const minPRef = useRef(minP);
-  const maxTokensRef = useRef(maxTokens);
 
-  useEffect(() => { queuedMessagesRef.current = queuedMessages; }, [queuedMessages]);
+  // queuedMessagesRef is updated synchronously when queuing/dequeuing to avoid race conditions
   useEffect(() => {
     if (queuedMessages.length <= 1) {
       setIsQueuedCollapsed(false);
@@ -143,8 +154,68 @@ export function ChatInterfacePanel({
   useEffect(() => { repeatPenaltyRef.current = repeatPenalty; }, [repeatPenalty]);
   useEffect(() => { topPRef.current = topP; }, [topP]);
   useEffect(() => { minPRef.current = minP; }, [minP]);
-  useEffect(() => { maxTokensRef.current = maxTokens; }, [maxTokens]);
   
+  // Process queue after state updates have fully propagated
+  useEffect(() => {
+    if (queueTrigger > 0) {
+      const qMsgs = queuedMessagesRef.current;
+      if (qMsgs.length > 0) {
+        const nextMsg = qMsgs[0];
+        
+        queuedMessagesRef.current = qMsgs.slice(1);
+        setQueuedMessages(queuedMessagesRef.current);
+        
+        const updatedHistory = [...messagesRef.current, nextMsg];
+        setMessagesRef.current(updatedHistory);
+        
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          const conversationHistory = updatedHistory.map(({ role, content: c, images: img, documents: docs }) => {
+            let finalContent = c;
+            if (docs && docs.length > 0) {
+              docs.forEach(doc => {
+                finalContent += `\n\n--- Attached Document: ${doc.name} ---\n${doc.content}`;
+              });
+            }
+            const msg: any = { role, content: finalContent };
+            if (img && img.length > 0) {
+              msg.images = img;
+            }
+            return msg;
+          });
+
+          wsRef.current.send(
+            JSON.stringify({
+              session_id: chatId,
+              model: selectedModelRef.current,
+              messages: conversationHistory,
+              provider: inferenceProvider,
+              options: {
+                temperature: temperatureRef.current,
+                repeat_penalty: repeatPenaltyRef.current,
+                top_p: topPRef.current,
+                min_p: minPRef.current
+              },
+            })
+          );
+        } else {
+          setMessagesRef.current([
+            ...updatedHistory,
+            { id: `error-${Date.now()}`, role: 'model', content: 'Error: Not connected to the backend. Please try again.' },
+          ]);
+          if (queuedMessagesRef.current.length > 0) {
+            setTimeout(() => setQueueTrigger(prev => prev + 1), 0);
+          } else {
+            setIsStreaming(false);
+            isStreamingRef.current = false;
+          }
+        }
+      } else {
+        setIsStreaming(false);
+        isStreamingRef.current = false;
+      }
+    }
+  }, [queueTrigger, chatId, inferenceProvider]);
+
   // Track if user was near the bottom before token updates
   const isAtBottomRef = useRef(true);
 
@@ -176,21 +247,27 @@ export function ChatInterfacePanel({
     if (messages.length === 0) return;
 
     let currentActiveId: string | null = null;
-    const containerRect = container.getBoundingClientRect();
 
-    // Check which message is currently in view
-    for (let i = 0; i < messages.length; i++) {
-      const msgId = messages[i].id;
-      const element = document.getElementById(`msg-${msgId}`);
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        // If element's top boundary is within container viewport
-        if (rect.top >= containerRect.top && rect.top <= containerRect.top + containerRect.height * 0.5) {
-          currentActiveId = msgId;
-          break;
-        } else if (rect.top < containerRect.top && rect.bottom > containerRect.top + containerRect.height * 0.25) {
-          currentActiveId = msgId;
+    const isScrollAtBottom = scrollTop + clientHeight >= scrollHeight - 30;
+    if (isScrollAtBottom) {
+      currentActiveId = messages[messages.length - 1].id;
+    } else {
+      // Threshold is 30% down the container viewport
+      const threshold = scrollTop + clientHeight * 0.3;
+
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msgId = messages[i].id;
+        const element = document.getElementById(`msg-${msgId}`);
+        if (element) {
+          if (element.offsetTop <= threshold) {
+            currentActiveId = msgId;
+            break;
+          }
         }
+      }
+
+      if (!currentActiveId && messages.length > 0) {
+        currentActiveId = messages[0].id;
       }
     }
 
@@ -200,9 +277,19 @@ export function ChatInterfacePanel({
   };
 
   const scrollToResponse = (msgId: string) => {
+    const container = historyContainerRef.current;
     const element = document.getElementById(`msg-${msgId}`);
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (container && element) {
+      const computedStyle = window.getComputedStyle(container);
+      const paddingTop = parseInt(computedStyle.paddingTop, 10) || 96;
+      const headerHeight = 56;
+      const gap = paddingTop === 80 ? 12 : 20; // smaller gap in compact mode
+      const targetScrollTop = Math.max(0, element.offsetTop - (headerHeight + gap));
+
+      container.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
+      });
       setActiveResponseId(msgId);
     }
   };
@@ -333,54 +420,19 @@ export function ChatInterfacePanel({
               }
             }
 
-            // Check for queued messages
+            // Check for queued messages after React updates states
+            if (queuedMessagesRef.current.length > 0) {
+              setQueueTrigger(prev => prev + 1);
+            } else {
+              setIsStreaming(false);
+              isStreamingRef.current = false;
+            }
+          } else if (data.type === 'toast') {
+            const newToastId = `toast-${Date.now()}`;
+            setToasts(prev => [...prev, { id: newToastId, title: data.title || 'Notification', message: data.message || '' }]);
             setTimeout(() => {
-              const qMsgs = queuedMessagesRef.current;
-              if (qMsgs.length > 0) {
-                // Send the first queued message
-                const nextMsg = qMsgs[0];
-                
-                // Update states
-                setQueuedMessages(prev => prev.slice(1));
-                
-                const updatedHistory = [...messagesRef.current, nextMsg];
-                setMessagesRef.current(updatedHistory);
-                
-                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                  const conversationHistory = updatedHistory.map(({ role, content: c, images: img, documents: docs }) => {
-                    let finalContent = c;
-                    if (docs && docs.length > 0) {
-                      docs.forEach(doc => {
-                        finalContent += `\n\n--- Attached Document: ${doc.name} ---\n${doc.content}`;
-                      });
-                    }
-                    const msg: any = { role, content: finalContent };
-                    if (img && img.length > 0) {
-                      msg.images = img;
-                    }
-                    return msg;
-                  });
-
-                  wsRef.current.send(
-                    JSON.stringify({
-                      session_id: chatId,
-                      model: selectedModelRef.current,
-                      messages: conversationHistory,
-                      options: {
-                        temperature: temperatureRef.current,
-                        repeat_penalty: repeatPenaltyRef.current,
-                        top_p: topPRef.current,
-                        min_p: minPRef.current,
-                        num_predict: maxTokensRef.current,
-                      },
-                    })
-                  );
-                }
-              } else {
-                setIsStreaming(false);
-                isStreamingRef.current = false;
-              }
-            }, 0);
+              setToasts(prev => prev.filter(t => t.id !== newToastId));
+            }, 4000);
           } else if (data.type === 'tool_approval_request') {
             playModernPing();
             const currentId = streamingMessageIdRef.current;
@@ -410,13 +462,18 @@ export function ChatInterfacePanel({
             }
           } else if (data.type === 'error') {
             streamingMessageIdRef.current = null;
-            setIsStreaming(false);
-            isStreamingRef.current = false;
             const errorContent = data.content ?? data.message ?? 'An unknown error occurred.';
             setMessagesRef.current((prev) => [
               ...prev,
               { id: `error-${Date.now()}`, role: 'model', content: `Error: ${errorContent}` },
             ]);
+            
+            if (queuedMessagesRef.current.length > 0) {
+              setQueueTrigger(prev => prev + 1);
+            } else {
+              setIsStreaming(false);
+              isStreamingRef.current = false;
+            }
           } else if (data.type === 'sensory_input') {
             const spokenText = data.content;
             if (spokenText && handleSendMessageRef.current) {
@@ -483,8 +540,15 @@ export function ChatInterfacePanel({
       documents
     };
 
-    if (isStreamingRef.current) {
-      setQueuedMessages(prev => [...prev, userMessage]);
+    if (isStreamingRef.current || queuedMessagesRef.current.length > 0) {
+      queuedMessagesRef.current = [...queuedMessagesRef.current, userMessage];
+      setQueuedMessages(queuedMessagesRef.current);
+      
+      if (!isStreamingRef.current) {
+        setIsStreaming(true);
+        isStreamingRef.current = true;
+        setQueueTrigger(prev => prev + 1);
+      }
       return;
     }
     
@@ -515,12 +579,12 @@ export function ChatInterfacePanel({
           session_id: chatId,
           model: selectedModelRef.current,
           messages: conversationHistory,
+          provider: inferenceProvider,
           options: {
             temperature: temperatureRef.current,
             repeat_penalty: repeatPenaltyRef.current,
             top_p: topPRef.current,
-            min_p: minPRef.current,
-            num_predict: maxTokensRef.current,
+            min_p: minPRef.current
           },
         })
       );
@@ -579,12 +643,12 @@ export function ChatInterfacePanel({
           session_id: chatId,
           model: selectedModelRef.current,
           messages: conversationHistory,
+          provider: inferenceProvider,
           options: {
             temperature: temperatureRef.current,
             repeat_penalty: repeatPenaltyRef.current,
             top_p: topPRef.current,
-            min_p: minPRef.current,
-            num_predict: maxTokensRef.current,
+            min_p: minPRef.current
           },
         })
       );
@@ -613,20 +677,18 @@ export function ChatInterfacePanel({
 
   let activeIndex = messages.findIndex(m => m.id === activeResponseId);
   if (activeIndex === -1) activeIndex = messages.length - 1;
-
-  let startIndex = activeIndex - 3;
-  let endIndex = activeIndex + 4; // 8 items total
+  let startIndex = activeIndex - 4; // Max 10 items total
+  let endIndex = activeIndex + 5;
 
   if (startIndex < 0) {
     startIndex = 0;
-    endIndex = Math.min(8, messages.length) - 1;
+    endIndex = Math.min(10, messages.length) - 1;
   } else if (endIndex >= messages.length) {
     endIndex = messages.length - 1;
-    startIndex = Math.max(0, messages.length - 8);
+    startIndex = Math.max(0, messages.length - 10);
   }
 
   const navigatorMessages = messages.slice(startIndex, endIndex + 1);
-
   const navigateToRelative = (offset: number) => {
     const targetIdx = Math.max(0, Math.min(messages.length - 1, activeIndex + offset));
     if (targetIdx !== activeIndex && messages[targetIdx]) {
@@ -649,7 +711,7 @@ export function ChatInterfacePanel({
           </span>
           
           {isModelDropdownOpen && models.length > 0 && (
-            <div className="custom-model-dropdown" style={{ top: '100%', left: 0, marginTop: '8px', minWidth: '220px', zIndex: 100 }}>
+            <div className="custom-model-dropdown" style={{ top: '100%', left: 0, marginTop: '8px', minWidth: '220px' }}>
               {models.map((m) => {
                 const notChat = m.can_chat === false;
                 return (
@@ -760,44 +822,49 @@ export function ChatInterfacePanel({
               disabled={activeIndex <= 0}
               title="Previous message"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="18 15 12 9 6 15"></polyline>
               </svg>
             </button>
 
-            {navigatorMessages.map((msg) => {
-              const isActive = msg.id === activeResponseId || (activeResponseId === null && msg.id === messages[messages.length - 1]?.id);
+            <div className="navigator-track-wrapper">
 
-              let cleanContent = msg.content;
-              if (msg.role === 'model') {
-                const thinkEndTag = '</think>';
-                const endIdx = msg.content.indexOf(thinkEndTag);
-                if (endIdx !== -1) {
-                  cleanContent = msg.content.slice(endIdx + thinkEndTag.length);
-                } else if (msg.content.includes('<think>')) {
-                  cleanContent = 'Thinking...';
-                }
-              }
+              <div className="navigator-dots-container">
+                {navigatorMessages.map((msg) => {
+                  const isActive = msg.id === activeResponseId || (activeResponseId === null && msg.id === messages[messages.length - 1]?.id);
 
-              const words = cleanContent.trim().split(/\s+/).filter(Boolean);
-              const previewText = words.length <= 6
-                ? words.join(' ')
-                : words.slice(0, 6).join(' ') + '...';
+                  let cleanContent = msg.content;
+                  if (msg.role === 'model') {
+                    const thinkEndTag = '</think>';
+                    const endIdx = msg.content.indexOf(thinkEndTag);
+                    if (endIdx !== -1) {
+                      cleanContent = msg.content.slice(endIdx + thinkEndTag.length);
+                    } else if (msg.content.includes('<think>')) {
+                      cleanContent = 'Thinking...';
+                    }
+                  }
 
-              return (
-                <div key={msg.id} className="navigator-item-wrapper">
-                  <button
-                    className={`navigator-dash ${msg.role} ${isActive ? 'active' : ''}`}
-                    onClick={() => scrollToResponse(msg.id)}
-                    aria-label={`Jump to ${msg.role === 'user' ? 'Message' : 'Response'}`}
-                  />
-                  <div className="navigator-tooltip">
-                    <span className="tooltip-role">{msg.role === 'user' ? 'You' : 'OrchAI'}</span>
-                    <span className="tooltip-text">{previewText}</span>
-                  </div>
-                </div>
-              );
-            })}
+                  const words = cleanContent.trim().split(/\s+/).filter(Boolean);
+                  const previewText = words.length <= 6
+                    ? words.join(' ')
+                    : words.slice(0, 6).join(' ') + '...';
+
+                  return (
+                    <div key={msg.id} className="navigator-item-wrapper">
+                      <button
+                        className={`navigator-dot ${msg.role} ${isActive ? 'active' : ''}`}
+                        onClick={() => scrollToResponse(msg.id)}
+                        aria-label={`Jump to ${msg.role === 'user' ? 'Message' : 'Response'}`}
+                      />
+                      <div className="navigator-tooltip">
+                        <span className="tooltip-role">{msg.role === 'user' ? 'You' : 'OrchAI'}</span>
+                        <span className="tooltip-text">{previewText}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
 
             <button
               className="navigator-chevron"
@@ -805,7 +872,7 @@ export function ChatInterfacePanel({
               disabled={activeIndex >= messages.length - 1}
               title="Next message"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="6 9 12 15 18 9"></polyline>
               </svg>
             </button>
@@ -853,7 +920,10 @@ export function ChatInterfacePanel({
                       <span className="queued-message-text">
                         {msg.content || (msg.documents?.length ? `Attached: ${msg.documents[0].name}` : 'Image attached')}
                       </span>
-                      <button className="queued-message-cancel" onClick={() => setQueuedMessages(prev => prev.filter(m => m.id !== msg.id))} title="Cancel queued message">
+                      <button className="queued-message-cancel" onClick={() => {
+                        queuedMessagesRef.current = queuedMessagesRef.current.filter(m => m.id !== msg.id);
+                        setQueuedMessages(queuedMessagesRef.current);
+                      }} title="Cancel queued message">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                       </button>
                     </div>
@@ -883,6 +953,27 @@ export function ChatInterfacePanel({
           )}
         </div>
       </div>
+      
+      {/* ── Toast Notifications ── */}
+      {toasts.length > 0 && (
+        <div className="toast-container">
+          {toasts.map(toast => (
+            <div key={toast.id} className="toast-card">
+              <div className="toast-content">
+                <div className="toast-title">{toast.title}</div>
+                <div className="toast-message">{toast.message}</div>
+              </div>
+              <button 
+                className="toast-close" 
+                onClick={() => setToasts(prev => prev.filter(t => t.id !== toast.id))}
+                aria-label="Close notification"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

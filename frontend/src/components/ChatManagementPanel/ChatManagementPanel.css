@@ -32,18 +32,18 @@
   background-color: var(--accent-color);
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: 7px;
   padding: 12px;
   cursor: pointer;
   font-weight: 600;
   font-size: 0.9rem;
   transition: background-color 0.2s, transform 0.1s;
   width: 100%;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
   display: flex;
   justify-content: center;
   align-items: center;
   outline: none;
+  flex-shrink: 0;
 }
 
 .new-chat-btn:hover {
@@ -70,13 +70,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: 7px;
   cursor: pointer;
   background-color: var(--subtle-bg);
   border: 1px solid var(--border-color);
   color: var(--text-secondary);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
+  flex-shrink: 0;
 }
 
 .chat-item:hover {
@@ -89,7 +90,6 @@
   background-color: rgba(79, 70, 229, 0.08);
   border-color: rgba(79, 70, 229, 0.25);
   color: var(--text-primary);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .chat-item-title {

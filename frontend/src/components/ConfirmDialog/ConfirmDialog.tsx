@@ -13,6 +13,8 @@ interface ConfirmDialogProps {
   busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  /** Hide the cancel button if it is just an alert. */
+  isAlert?: boolean;
 }
 
 const WARNING_ICON = (
@@ -31,6 +33,14 @@ const QUESTION_ICON = (
   </svg>
 );
 
+const INFO_ICON = (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" />
+    <line x1="12" y1="16" x2="12" y2="12" />
+    <line x1="12" y1="8" x2="12.01" y2="8" />
+  </svg>
+);
+
 export function ConfirmDialog({
   isOpen,
   title,
@@ -41,6 +51,7 @@ export function ConfirmDialog({
   busy = false,
   onConfirm,
   onCancel,
+  isAlert = false,
 }: ConfirmDialogProps) {
   // Keyboard: Escape cancels, Enter confirms (unless a request is in flight).
   useEffect(() => {
@@ -65,18 +76,20 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-label={title}
       >
-        <div className={`confirm-icon ${danger ? 'danger' : ''}`}>
-          {danger ? WARNING_ICON : QUESTION_ICON}
+        <div className={`confirm-icon ${danger ? 'danger' : ''} ${isAlert && !danger ? 'info' : ''}`}>
+          {danger ? WARNING_ICON : (isAlert ? INFO_ICON : QUESTION_ICON)}
         </div>
         <h3 className="confirm-title">{title}</h3>
         <p className="confirm-message">{message}</p>
         <div className="confirm-actions">
-          <button type="button" className="confirm-cancel" onClick={onCancel} disabled={busy}>
-            {cancelLabel}
-          </button>
+          {!isAlert && (
+            <button type="button" className="confirm-cancel" onClick={onCancel} disabled={busy}>
+              {cancelLabel}
+            </button>
+          )}
           <button
             type="button"
-            className={`confirm-ok ${danger ? 'danger' : ''}`}
+            className={`confirm-ok ${danger ? 'danger' : ''} ${isAlert ? 'alert-ok' : ''}`}
             onClick={onConfirm}
             disabled={busy}
           >

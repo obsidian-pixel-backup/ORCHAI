@@ -145,17 +145,14 @@
   position: absolute;
   bottom: calc(100% + 10px);
   left: 0;
-  background-color: var(--panel-bg);
-  /* Added background blur so content behind is blurred */
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  /* Ensure the background is slightly transparent if var(--panel-bg) is solid, 
-     though usually it already has some transparency if the user reported seeing through it */
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur-saturate);
+  -webkit-backdrop-filter: var(--glass-blur-saturate);
+  border: 1px solid var(--glass-border);
+  border-radius: 7px;
   padding: 8px;
   min-width: 260px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--glass-shadow);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -178,7 +175,7 @@
   display: flex;
   align-items: center;
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
   transition: background-color 0.2s;
   gap: 12px;
@@ -262,10 +259,10 @@
 
 @keyframes mic-pulse {
   0%, 100% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    opacity: 0.6;
   }
   50% {
-    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    opacity: 1;
   }
 }
 

@@ -8,6 +8,8 @@ interface ActivityBarProps {
   onTabChange: (tab: NavTab) => void;
   onSettingsClick: () => void;
   onModelLibraryClick: () => void;
+  activeDownloadsCount?: number;
+  downloadProgress?: number;
 }
 
 const CHAT_ICON = (
@@ -44,7 +46,14 @@ const SETTINGS_ICON = (
   </svg>
 );
 
-export function ActivityBar({ activeTab, onTabChange, onSettingsClick, onModelLibraryClick }: ActivityBarProps) {
+export function ActivityBar({
+  activeTab,
+  onTabChange,
+  onSettingsClick,
+  onModelLibraryClick,
+  activeDownloadsCount = 0,
+  downloadProgress = 0
+}: ActivityBarProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   return (
@@ -82,14 +91,35 @@ export function ActivityBar({ activeTab, onTabChange, onSettingsClick, onModelLi
           {hoveredId === 'skills' && <span className="tab-tooltip">Skills Library</span>}
         </button>
         <button
-          className="activity-tab"
+          className={`activity-tab ${activeDownloadsCount > 0 ? 'downloading' : ''}`}
           onClick={onModelLibraryClick}
           onMouseEnter={() => setHoveredId('models')}
           onMouseLeave={() => setHoveredId(null)}
           title="Model Library"
         >
           {MODELS_ICON}
-          {hoveredId === 'models' && <span className="tab-tooltip">Model Library</span>}
+          {activeDownloadsCount > 0 && (
+            <>
+              {/* Notification badge showing percentage */}
+              <div className="activity-tab-badge" title={`${activeDownloadsCount} model(s) downloading`}>
+                {Math.round(downloadProgress)}%
+              </div>
+              {/* Progress bar */}
+              <div className="activity-tab-progress-bar">
+                <div 
+                  className="activity-tab-progress-fill" 
+                  style={{ width: `${downloadProgress}%` }}
+                />
+              </div>
+            </>
+          )}
+          {hoveredId === 'models' && (
+            <span className="tab-tooltip">
+              {activeDownloadsCount > 0 
+                ? `Model Library (${Math.round(downloadProgress)}% - ${activeDownloadsCount} downloading)`
+                : 'Model Library'}
+            </span>
+          )}
         </button>
       </div>
 

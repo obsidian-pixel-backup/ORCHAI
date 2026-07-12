@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback, type ChangeEvent } from 'react';
 import './ChatInput.css';
+import { useDialog } from '../../ConfirmDialog/DialogContext';
 
 interface ChatInputProps {
   onSendMessage: (content: string, images: string[], documents: { name: string; content: string }[]) => void;
@@ -9,6 +10,7 @@ interface ChatInputProps {
 }
 
 export function ChatInput({ onSendMessage, isStreaming, onStopGeneration, sendOnEnter }: ChatInputProps) {
+  const dialog = useDialog();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [inputValue, setInputValue] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
@@ -206,7 +208,7 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration, sendOn
       setIsListening(true);
     } catch (err) {
       console.error('Microphone access error:', err);
-      alert('Could not access microphone. Please check your permissions.');
+      dialog.alert('Microphone Error', 'Could not access microphone. Please check your permissions.');
     }
   }, [startRecorder]);
 
