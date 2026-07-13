@@ -1,5 +1,5 @@
 """
-Functional Skills Registry for ORCHAI.
+Functional Skills Registry for KLYDIS.
 
 A "skill" is a selectable specialization mode. When the user activates one in the
 chat input, a `[Skill: <name>]` marker is embedded into the outgoing message. The
@@ -13,7 +13,7 @@ from typing import Dict, List, Any
 import json
 import os
 
-SKILLS_FILE = os.path.join(os.path.dirname(__file__), "orchai_skills.json")
+SKILLS_FILE = os.path.join(os.path.dirname(__file__), "klydis_skills.json")
 
 DEFAULT_SKILLS: Dict[str, Dict[str, Any]] = {
     "code_review": {

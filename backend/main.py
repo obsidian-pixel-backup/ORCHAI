@@ -16,7 +16,7 @@ try:
     from sensory.audio_listener import AudioListener
     from sensory.screen_watcher import ScreenWatcher
     SENSORY_MODULES_LOADED = True
-except ImportError as e:
+except Exception as e:
     print(f"Warning: Could not load Sensory modules: {e}")
     SENSORY_MODULES_LOADED = False
 
@@ -123,14 +123,14 @@ async def process_sensory_audio(text: str):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle."""
-    logger = logging.getLogger("orchai")
-    logger.info("ORCHAI Backend starting up...")
+    logger = logging.getLogger("klydis")
+    logger.info("KLYDIS Backend starting up...")
     
     # Import and start our optional Distributed Inference Cluster Manager.
     # This is an advanced, opt-in feature (needs paramiko + a configured worker).
     # It must NEVER take the whole backend down: guard the import AND the task so a
     # missing dependency or misconfiguration degrades gracefully to local-only.
-    if os.getenv("ORCHAI_ENABLE_CLUSTER", "0") == "1":
+    if os.getenv("KLYDIS_ENABLE_CLUSTER", "0") == "1":
         try:
             from cluster_manager import cluster_manager
 
@@ -144,7 +144,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Distributed cluster unavailable (running local-only): {e}")
     else:
-        logger.info("Distributed cluster disabled (set ORCHAI_ENABLE_CLUSTER=1 to enable).")
+        logger.info("Distributed cluster disabled (set KLYDIS_ENABLE_CLUSTER=1 to enable).")
 
     # Internal fallback to ensure Ollama is running (legacy support)
     ensure_ollama_running()
@@ -185,13 +185,13 @@ async def lifespan(app: FastAPI):
 
     yield
     
-    logger.info("ORCHAI Backend shutting down...")
+    logger.info("KLYDIS Backend shutting down...")
     if SENSORY_MODULES_LOADED:
         if audio_listener: audio_listener.stop()
         if screen_watcher: screen_watcher.stop()
 
 
-app = FastAPI(title="ORCHAI Backend", lifespan=lifespan)
+app = FastAPI(title="KLYDIS Backend", lifespan=lifespan)
 
 # Allow CORS for Electron frontend (which may run on a local dev server initially)
 app.add_middleware(
@@ -209,7 +209,7 @@ app.include_router(models_router, prefix="/api/models")
 
 @app.get("/")
 def root():
-    return {"status": "ok", "message": "ORCHAI Backend Running"}
+    return {"status": "ok", "message": "KLYDIS Backend Running"}
 
 mock_vision_enabled = False
 mock_audio_enabled = False

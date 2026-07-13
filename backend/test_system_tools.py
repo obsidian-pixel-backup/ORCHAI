@@ -4,7 +4,7 @@ from system_tools import run_python_script, send_http_request, query_database, m
 
 def test_file_operations():
     test_file = "test_sys_tools.txt"
-    content = "Hello ORCHAI System Tools!"
+    content = "Hello KLYDIS System Tools!"
     
     # Write
     res_write = write_file(test_file, content)

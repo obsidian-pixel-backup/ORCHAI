@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ORCHAI is a Windows-native desktop application that combines an Electron frontend with a Python FastAPI backend. The app acts as an autonomous agent orchestration wrapper, enabling users to solve complex development and computing problems through real-time chat with local LLMs (via Ollama).
+KLYDIS is a Windows-native desktop application that combines an Electron frontend with a Python FastAPI backend. The app acts as an autonomous agent orchestration wrapper, enabling users to solve complex development and computing problems through real-time chat with local LLMs (via Ollama).
 
 **Key Architecture:**
 - **Frontend**: React + TypeScript using Vite, packaged for Electron desktop
@@ -77,7 +77,7 @@ cat requirements.txt                   # View Python dependencies
 - **Sensory Systems:** 
   - `sensory/audio_listener.py` — Real-time audio transcription using faster-whisper (base.en model)
   - `sensory/screen_watcher.py` — Periodic screen capture with vision LLM analysis via Ollama's llava
-- **Data Storage:** SQLite database (`orchai_memory.db`) for session state persistence
+- **Data Storage:** SQLite database (`klydis_memory.db`) for session state persistence
 - **System Tools:** `system_tools.py` for safe file/command operations
 - **Agent Orchestration:** `sub_agents.py`, `web_research.py`, `skills.py`
 
@@ -157,8 +157,8 @@ This is specifically a Windows native desktop application using Electron. There 
 - Vision support detected via model family metadata (`clip`, `llava`, `vision`)
 
 ### State Persistence
-- **Frontend**: Chat sessions stored in localStorage (`orchai_chats`, `orchai_active_chat_id`)
-- **Backend**: Session state persisted to SQLite (`orchai_memory.db`) with session tables for world state and messages
+- **Frontend**: Chat sessions stored in localStorage (`klydis_chats`, `klydis_active_chat_id`)
+- **Backend**: Session state persisted to SQLite (`klydis_memory.db`) with session tables for world state and messages
 
 ## Development Workflow Guidelines
 

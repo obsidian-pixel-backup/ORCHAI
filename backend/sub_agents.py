@@ -3,7 +3,7 @@ import json
 import httpx
 import logging
 
-logger = logging.getLogger("orchai.sub_agents")
+logger = logging.getLogger("klydis.sub_agents")
 
 OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 

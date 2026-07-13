@@ -1,24 +1,52 @@
 import threading
 import logging
 import time
+import os
 
-try:
-    import sounddevice as sd
-    import numpy as np
-    from faster_whisper import WhisperModel
-    import io
-    AUDIO_AVAILABLE = True
-except (ImportError, OSError):
-    sd = None
-    np = None
-    WhisperModel = None
-    AUDIO_AVAILABLE = False
+logger = logging.getLogger("klydis.sensory.audio")
 
-logger = logging.getLogger("orchai.sensory.audio")
+# Defer imports of heavy/unstable libraries to avoid crashing/hanging startup.
+sd = None
+np = None
+WhisperModel = None
+AUDIO_AVAILABLE = None
+
+def _initialize_audio_dependencies():
+    global sd, np, WhisperModel, AUDIO_AVAILABLE
+    if AUDIO_AVAILABLE is not None:
+        return AUDIO_AVAILABLE
+        
+    if os.getenv("KLYDIS_DISABLE_AUDIO", "0") == "1":
+        logger.info("Audio listener explicitly disabled via KLYDIS_DISABLE_AUDIO env var.")
+        AUDIO_AVAILABLE = False
+        return False
+        
+    try:
+        logger.info("Initializing audio listener dependencies...")
+        import numpy as _np
+        import sounddevice as _sd
+        from faster_whisper import WhisperModel as _WhisperModel
+        
+        # Test sounddevice query_devices to verify PortAudio works and won't crash later
+        _sd.query_devices()
+        
+        sd = _sd
+        np = _np
+        WhisperModel = _WhisperModel
+        AUDIO_AVAILABLE = True
+        logger.info("Audio dependencies loaded successfully.")
+    except Exception as e:
+        logger.warning(f"Audio dependencies or PortAudio library not available: {e}")
+        sd = None
+        np = None
+        WhisperModel = None
+        AUDIO_AVAILABLE = False
+    return AUDIO_AVAILABLE
 
 class AudioListener:
     def __init__(self, energy_threshold=0.005):
-        if AUDIO_AVAILABLE:
+        is_available = _initialize_audio_dependencies()
+        if is_available:
             self.energy_threshold = energy_threshold
             logger.info("Loading faster-whisper model...")
             self.whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8")

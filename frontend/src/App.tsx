@@ -63,12 +63,12 @@ export interface ChatSession {
 const DEFAULT_WELCOME_MSG: Message = {
   id: 'initial-msg',
   role: 'model',
-  content: 'Hello. I am the ORCHAI orchestration wrapper. How can I assist you with your tasks today?'
+  content: 'Hello. I am the KLYDIS orchestration wrapper. How can I assist you with your tasks today?'
 };
 
 const INITIAL_CHAT: ChatSession = {
   id: 'default',
-  title: 'OrchAI Conversation',
+  title: 'Klydis Conversation',
   messages: [DEFAULT_WELCOME_MSG],
   stats: {
     tokens_per_second: 0,
@@ -92,15 +92,15 @@ function AppContent() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showModelLibrary, setShowModelLibrary] = useState(false);
   const [isDarkTheme, setIsDarkTheme] = useState<boolean>(() => {
-    return localStorage.getItem('orchai_theme') !== 'light';
+    return localStorage.getItem('klydis_theme') !== 'light';
   });
-  const [sendOnEnter, setSendOnEnter] = useState<boolean>(() => localStorage.getItem('orchai_send_enter') !== 'false');
-  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() => localStorage.getItem('orchai_notifications') === 'true');
-  const [compactMode, setCompactMode] = useState<boolean>(() => localStorage.getItem('orchai_compact') === 'true');
-  const [language, setLanguage] = useState<string>(() => localStorage.getItem('orchai_lang') || 'en');
+  const [sendOnEnter, setSendOnEnter] = useState<boolean>(() => localStorage.getItem('klydis_send_enter') !== 'false');
+  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(() => localStorage.getItem('klydis_notifications') === 'true');
+  const [compactMode, setCompactMode] = useState<boolean>(() => localStorage.getItem('klydis_compact') === 'true');
+  const [language, setLanguage] = useState<string>(() => localStorage.getItem('klydis_lang') || 'en');
   const [models, setModels] = useState<{name: string, supports_reasoning: boolean, supports_vision?: boolean, can_chat?: boolean}[]>([]);
   const [modelsLoading, setModelsLoading] = useState(true);
-  const [inferenceProvider, setInferenceProvider] = useState<string>(() => localStorage.getItem('orchai_provider') || 'ollama');
+  const [inferenceProvider, setInferenceProvider] = useState<string>(() => localStorage.getItem('klydis_provider') || 'ollama');
 
   // Toasts for background events (like downloads)
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -252,7 +252,7 @@ function AppContent() {
       const raw = e?.message || '';
       const isNetwork = e?.name === 'TypeError' || /failed to fetch|network|load failed/i.test(raw);
       const msg = isNetwork
-        ? 'Couldn’t reach the ORCHAI backend (it may be starting up or was interrupted). Wait a moment and try the download again.'
+        ? 'Couldn’t reach the KLYDIS backend (it may be starting up or was interrupted). Wait a moment and try the download again.'
         : (raw || 'Download failed.');
       setPulls(prev => ({ ...prev, [model]: { model, status: 'error', percent: 0, error: msg } }));
       addToast('Download Failed', `Could not download ${friendlyModelLabel(model)}: ${msg}`, 'error');
@@ -274,37 +274,37 @@ function AppContent() {
   }, [isDarkTheme, compactMode, language]);
 
   useEffect(() => {
-    localStorage.setItem('orchai_theme', isDarkTheme ? 'dark' : 'light');
+    localStorage.setItem('klydis_theme', isDarkTheme ? 'dark' : 'light');
   }, [isDarkTheme]);
 
   useEffect(() => {
-    localStorage.setItem('orchai_send_enter', String(sendOnEnter));
+    localStorage.setItem('klydis_send_enter', String(sendOnEnter));
   }, [sendOnEnter]);
 
   useEffect(() => {
-    localStorage.setItem('orchai_provider', inferenceProvider);
+    localStorage.setItem('klydis_provider', inferenceProvider);
   }, [inferenceProvider]);
 
   useEffect(() => {
-    localStorage.setItem('orchai_notifications', String(notificationsEnabled));
+    localStorage.setItem('klydis_notifications', String(notificationsEnabled));
     if (notificationsEnabled && 'Notification' in window && Notification.permission !== 'granted') {
       Notification.requestPermission();
     }
   }, [notificationsEnabled]);
 
   useEffect(() => {
-    localStorage.setItem('orchai_compact', String(compactMode));
+    localStorage.setItem('klydis_compact', String(compactMode));
   }, [compactMode]);
 
   useEffect(() => {
-    localStorage.setItem('orchai_lang', language);
+    localStorage.setItem('klydis_lang', language);
   }, [language]);
 
   const handleToggleTheme = () => setIsDarkTheme(prev => !prev);
 
   // Load chat sessions from localStorage or use default initial chat
   const [chats, setChats] = useState<ChatSession[]>(() => {
-    const saved = localStorage.getItem('orchai_chats');
+    const saved = localStorage.getItem('klydis_chats');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -326,7 +326,7 @@ function AppContent() {
   });
 
   const [activeChatId, setActiveChatId] = useState<string>(() => {
-    const saved = localStorage.getItem('orchai_active_chat_id');
+    const saved = localStorage.getItem('klydis_active_chat_id');
     if (saved) {
       return saved;
     }
@@ -335,11 +335,11 @@ function AppContent() {
 
   // Save state to localStorage whenever chats list or active ID changes
   useEffect(() => {
-    localStorage.setItem('orchai_chats', JSON.stringify(chats));
+    localStorage.setItem('klydis_chats', JSON.stringify(chats));
   }, [chats]);
 
   useEffect(() => {
-    localStorage.setItem('orchai_active_chat_id', activeChatId);
+    localStorage.setItem('klydis_active_chat_id', activeChatId);
   }, [activeChatId]);
 
   // Fetch messages from backend for active chat to sync dynamic/offline messages (like autonomous thoughts)
@@ -426,7 +426,7 @@ function AppContent() {
 
   // Asynchronous model-driven chat renaming on first user message
   useEffect(() => {
-    const defaultTitles = ['New Chat', 'OrchAI Conversation'];
+    const defaultTitles = ['New Chat', 'Klydis Conversation'];
     if (activeChat && defaultTitles.includes(activeChat.title)) {
       const userMessages = activeChat.messages.filter((m) => m.role === 'user');
       const lastMessage = activeChat.messages[activeChat.messages.length - 1];

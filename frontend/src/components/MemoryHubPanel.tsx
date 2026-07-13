@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import './MemoryHubPanel.css';
 import { useDialog } from './ConfirmDialog/DialogContext';
+import { MarkdownRenderer } from './ChatInterfacePanel/ChatMessage/MarkdownRenderer';
 
 interface ContextStats {
   active_tokens: number;
@@ -67,6 +68,29 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [loadingSearch, setLoadingSearch] = useState<boolean>(false);
+  const [expandedResults, setExpandedResults] = useState<Record<number, boolean>>({});
+
+  const toggleResultExpand = (idx: number) => {
+    setExpandedResults(prev => ({
+      ...prev,
+      [idx]: !prev[idx]
+    }));
+  };
+
+  // Helper to format timestamps nicely
+  const formatTimestamp = (ts: number) => {
+    const dateObj = new Date(ts * 1000);
+    const now = new Date();
+    const isToday = dateObj.toDateString() === now.toDateString();
+    const timeStr = dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    if (isToday) {
+      return `Today, ${timeStr}`;
+    } else {
+      const dateStr = dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      return `${dateStr}, ${timeStr}`;
+    }
+  };
 
   // Fetch current state from backend
   const fetchWorldState = async (attempt = 1) => {
@@ -106,9 +130,9 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
     const handleConfigUpdated = () => {
       fetchWorldState(1);
     };
-    window.addEventListener('orchai-config-updated', handleConfigUpdated);
+    window.addEventListener('klydis-config-updated', handleConfigUpdated);
     return () => {
-      window.removeEventListener('orchai-config-updated', handleConfigUpdated);
+      window.removeEventListener('klydis-config-updated', handleConfigUpdated);
     };
   }, [chatId]);
 
@@ -126,7 +150,7 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
           dynamic_persona: persona,
         }),
       });
-      window.dispatchEvent(new CustomEvent('orchai-config-updated'));
+      window.dispatchEvent(new CustomEvent('klydis-config-updated'));
       fetchWorldState();
     } catch (err) {
       console.error('Failed to save config', err);
@@ -246,6 +270,7 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
       if (res.ok) {
         const data = await res.json();
         setSearchResults(data.results || []);
+        setExpandedResults({});
       }
     } catch (err) {
       console.error('Failed to search memory', err);
@@ -270,10 +295,6 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
 
   // Graph styling parameters
   const limitTokenBudget = 4096;
-  const pctActive = Math.min(100, (contextStats.active_tokens / limitTokenBudget) * 100);
-  const pctWorld = Math.min(100, (contextStats.world_state_tokens / limitTokenBudget) * 100);
-  const pctRecall = Math.min(100, (contextStats.recalled_tokens / limitTokenBudget) * 100);
-  const pctRemaining = Math.max(0, 100 - (pctActive + pctWorld + pctRecall));
 
   return (
     <div className="optimizer-panel-container">
@@ -287,10 +308,34 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
         <div className="health-detail-text">{health.text}</div>
 
         <div className="allocation-bar">
-          <div className="bar-slice active-slice" style={{ width: `${pctActive}%` }} title={`Active Window: ${contextStats.active_tokens}t`} />
-          <div className="bar-slice world-slice" style={{ width: `${pctWorld}%` }} title={`World State Memory: ${contextStats.world_state_tokens}t`} />
-          <div className="bar-slice recall-slice" style={{ width: `${pctRecall}%` }} title={`Semantically Recalled: ${contextStats.recalled_tokens}t`} />
-          <div className="bar-slice remaining-slice" style={{ width: `${pctRemaining}%` }} title={`Headroom: ${Math.max(0, limitTokenBudget - contextStats.total_active_context)}t`} />
+          {contextStats.active_tokens > 0 && (
+            <div 
+              className="bar-slice active-slice" 
+              style={{ flex: contextStats.active_tokens }} 
+              title={`Active Window: ${contextStats.active_tokens}t`} 
+            />
+          )}
+          {contextStats.world_state_tokens > 0 && (
+            <div 
+              className="bar-slice world-slice" 
+              style={{ flex: contextStats.world_state_tokens }} 
+              title={`World State Memory: ${contextStats.world_state_tokens}t`} 
+            />
+          )}
+          {contextStats.recalled_tokens > 0 && (
+            <div 
+              className="bar-slice recall-slice" 
+              style={{ flex: contextStats.recalled_tokens }} 
+              title={`Semantically Recalled: ${contextStats.recalled_tokens}t`} 
+            />
+          )}
+          {Math.max(0, limitTokenBudget - contextStats.total_active_context) > 0 && (
+            <div 
+              className="bar-slice remaining-slice" 
+              style={{ flex: Math.max(0, limitTokenBudget - contextStats.total_active_context) }} 
+              title={`Headroom: ${Math.max(0, limitTokenBudget - contextStats.total_active_context)}t`} 
+            />
+          )}
         </div>
         
         <div className="legend-grid">
@@ -372,7 +417,7 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
         {!isEditing ? (
           <div className="world-state-card">
             {worldState ? (
-              <pre className="world-state-content">{worldState}</pre>
+              <MarkdownRenderer content={worldState} />
             ) : (
               <div className="world-state-empty">
                 Memory is currently empty. Start chatting to build consolidated context!
@@ -409,7 +454,7 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
         {!isEditingPersona ? (
           <div className="world-state-card">
             {personaState ? (
-              <pre className="world-state-content">{personaState}</pre>
+              <MarkdownRenderer content={personaState} />
             ) : (
               <div className="world-state-empty">
                 Persona is currently empty. Start chatting to build evolved context!
@@ -433,7 +478,9 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
             <h3>Cognitive Diagnostics & Mood</h3>
           </div>
           {emotionalState && (
-            <pre className="world-state-content emotional-narrative">{emotionalState}</pre>
+            <div className="world-state-card emotional-narrative-card" style={{ marginBottom: '12px' }}>
+              <MarkdownRenderer content={emotionalState} />
+            </div>
           )}
           <div className="world-state-card emotional-state-card">
             <div className="diagnostics-summary-row">
@@ -593,10 +640,9 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
           <div className="world-state-card diary-card">
             <div className="diary-timeline">
               {contextStats.diary.map((log, idx) => {
-                const date = new Date(log.timestamp * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 return (
                   <div key={idx} className="diary-timeline-item">
-                    <div className="diary-timeline-time">{date}</div>
+                    <div className="diary-timeline-time">{formatTimestamp(log.timestamp)}</div>
                     <div className="diary-timeline-body">"{log.entry}"</div>
                   </div>
                 );
@@ -624,12 +670,30 @@ export function MemoryHubPanel({ stats, wsState, chatId }: MemoryHubPanelProps) 
 
         {searchResults.length > 0 && (
           <div className="search-results-list">
-            {searchResults.map((res: any, i: number) => (
-              <div key={i} className="search-result-item">
-                <div className="result-role">{res.role === 'user' ? 'USER' : 'ASSISTANT'}</div>
-                <div className="result-content">{res.content}</div>
-              </div>
-            ))}
+            {searchResults.map((res: any, i: number) => {
+              const isExpanded = !!expandedResults[i];
+              return (
+                <div 
+                  key={i} 
+                  className={`search-result-item clickable ${isExpanded ? 'expanded' : ''}`}
+                  onClick={() => toggleResultExpand(i)}
+                >
+                  <div className="result-header-row">
+                    <div className="result-role">{res.role === 'user' ? 'USER' : 'ASSISTANT'}</div>
+                    <span className="result-expand-toggle">
+                      {isExpanded ? 'Collapse' : 'Expand'}
+                    </span>
+                  </div>
+                  <div className={`result-content ${isExpanded ? 'expanded' : ''}`}>
+                    {isExpanded ? (
+                      <MarkdownRenderer content={res.content} />
+                    ) : (
+                      res.content
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

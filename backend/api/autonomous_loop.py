@@ -6,19 +6,19 @@ import httpx
 import time
 from api.chat import manager, orchestrators, OLLAMA_BASE_URL
 
-logger = logging.getLogger("orchai.autonomous_loop")
+logger = logging.getLogger("klydis.autonomous_loop")
 
 async def autonomous_background_task():
     """
-    A background loop that periodically gives ORCHAI autonomous agency
+    A background loop that periodically gives KLYDIS autonomous agency
     to reflect on its state, environment, and initiate conversation.
 
     This drives the "sentience" behaviour (unprompted reflection). It is enabled
-    by default but can be turned off with ORCHAI_ENABLE_AUTONOMY=0 (e.g. to avoid
+    by default but can be turned off with KLYDIS_ENABLE_AUTONOMY=0 (e.g. to avoid
     unsolicited model calls / GPU usage).
     """
-    if os.getenv("ORCHAI_ENABLE_AUTONOMY", "1") != "1":
-        logger.info("Autonomous loop disabled (set ORCHAI_ENABLE_AUTONOMY=1 to enable).")
+    if os.getenv("KLYDIS_ENABLE_AUTONOMY", "1") != "1":
+        logger.info("Autonomous loop disabled (set KLYDIS_ENABLE_AUTONOMY=1 to enable).")
         return
     logger.info("Autonomous goal formation and reflection loop started.")
     while True:

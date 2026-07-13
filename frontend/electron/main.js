@@ -39,11 +39,11 @@ const child_process_1 = require("child_process");
 let pythonProcess = null;
 // Give the app a real identity (window title, taskbar, About box) instead of the
 // default package name "frontend".
-const APP_NAME = 'ORCHAI';
+const APP_NAME = 'KLYDIS';
 electron_1.app.setName(APP_NAME);
 /**
  * Build the application menu. Standard editing/view items use built-in roles
- * (guaranteed to work). ORCHAI-specific items send an IPC message to the renderer,
+ * (guaranteed to work). KLYDIS-specific items send an IPC message to the renderer,
  * which App.tsx listens for (see the `menu:*` handlers there).
  */
 function buildAppMenu(win) {
@@ -100,12 +100,12 @@ function buildAppMenu(win) {
             role: 'help',
             submenu: [
                 {
-                    label: 'About ORCHAI',
+                    label: 'About KLYDIS',
                     click: () => {
                         electron_1.dialog.showMessageBox(win, {
                             type: 'info',
-                            title: 'About ORCHAI',
-                            message: 'ORCHAI',
+                            title: 'About KLYDIS',
+                            message: 'KLYDIS',
                             detail: 'Autonomous agent orchestration wrapper.\n' +
                                 'Electron + React frontend · Python FastAPI backend · local LLMs via Ollama.\n\n' +
                                 `Electron ${process.versions.electron} · Chromium ${process.versions.chrome} · Node ${process.versions.node}`,
@@ -115,7 +115,7 @@ function buildAppMenu(win) {
                 },
                 {
                     label: 'GitHub Repository',
-                    click: () => { electron_1.shell.openExternal('https://github.com/obsidian-pixel-backup/ORCHAI'); },
+                    click: () => { electron_1.shell.openExternal('https://github.com/obsidian-pixel-backup/KLYDIS'); },
                 },
             ],
         },
@@ -140,11 +140,11 @@ function createWindow() {
             contextIsolation: false
         }
     });
-    // Keep the window/taskbar title as "ORCHAI" — otherwise the page's <title>
+    // Keep the window/taskbar title as "KLYDIS" — otherwise the page's <title>
     // (or Vite) can override it.
     win.on('page-title-updated', (e) => e.preventDefault());
     win.setTitle(APP_NAME);
-    // Install the ORCHAI application menu.
+    // Install the KLYDIS application menu.
     buildAppMenu(win);
     // Ask before shutting down — let the user decide whether to also stop Ollama,
     // instead of always force-killing it (it may be used by other apps).
@@ -158,9 +158,9 @@ function createWindow() {
             defaultId: 2,
             cancelId: 0,
             noLink: true,
-            title: 'Quit ORCHAI?',
-            message: 'Quit ORCHAI?',
-            detail: 'The ORCHAI Python backend will stop. Do you also want to stop the local '
+            title: 'Quit KLYDIS?',
+            message: 'Quit KLYDIS?',
+            detail: 'The KLYDIS Python backend will stop. Do you also want to stop the local '
                 + 'Ollama server? (Stopping it frees GPU/RAM, but will affect anything else using Ollama.)',
         });
         if (choice === 0)

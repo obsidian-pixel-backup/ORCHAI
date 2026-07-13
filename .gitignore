@@ -7,7 +7,7 @@ frontend/test.zip
 # Python caches and local db
 **/__pycache__/
 *.pyc
-backend/orchai_memory.db
+backend/klydis_memory.db
 *.db-journal
 *.sqlite
 *.sqlite3

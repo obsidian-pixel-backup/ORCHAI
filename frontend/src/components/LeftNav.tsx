@@ -48,7 +48,7 @@ const EXPAND_ICON = (
 );
 
 const LOGO_TEXT = (
-  <span className="logo-text">ORCHAI</span>
+  <span className="logo-text">KLYDIS</span>
 );
 
 export function LeftNav({

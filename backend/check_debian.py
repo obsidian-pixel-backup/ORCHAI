@@ -17,7 +17,7 @@ try:
     print(stdout.read().decode())
     
     # Check the latest log lines if compilation is happening
-    stdin, stdout, stderr = ssh.exec_command("tail -n 20 ~/.orchai/bin/rpc.log || true")
+    stdin, stdout, stderr = ssh.exec_command("tail -n 20 ~/.klydis/bin/rpc.log || true")
     print("Log output:")
     print(stdout.read().decode())
     

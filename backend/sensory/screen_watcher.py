@@ -8,7 +8,7 @@ import logging
 import base64
 import requests
 
-logger = logging.getLogger("orchai.sensory.screen")
+logger = logging.getLogger("klydis.sensory.screen")
 
 class ScreenWatcher:
     def __init__(self, capture_interval=5.0):

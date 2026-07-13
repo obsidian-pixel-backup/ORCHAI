@@ -19,7 +19,7 @@ if _BACKEND_DIR not in sys.path:
 # Module-level logger. Several code paths (auto-checkpoint, rules engine, inner
 # monologue, emotional-state VAD updates) call `logger.*`; without this they raise
 # NameError mid-generation and every chat turn fails with a backend error.
-logger = logging.getLogger("orchai.chat")
+logger = logging.getLogger("klydis.chat")
 
 router = APIRouter()
 
@@ -268,6 +268,15 @@ async def generate_chat_title(payload: GenerateTitleRequest):
         f"2. Output ONLY the plain title text. Do not wrap it in quotes, do not add a period, and do not add any explanation."
     )
     
+    # Standardize num_ctx to match the active session to avoid Ollama model reloading
+    num_ctx = 8192
+    try:
+        orch = get_orchestrator(payload.session_id)
+        if getattr(orch, "last_num_ctx", None):
+            num_ctx = orch.last_num_ctx
+    except Exception:
+        pass
+    
     ollama_payload = {
         "model": payload.model,
         "messages": [
@@ -277,7 +286,8 @@ async def generate_chat_title(payload: GenerateTitleRequest):
         "stream": False,
         "options": {
             "temperature": 0.3,
-            "num_predict": -1
+            "num_predict": 100,
+            "num_ctx": num_ctx
         },
         "think": True
     }
@@ -723,59 +733,7 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         except Exception:
             pass
 
-    # 3. Intercept & Orchestrate: Check auto-checkpoint and evaluate rules
-    try:
-        await orch.check_and_trigger_auto_checkpoint(model, provider, websocket)
-    except Exception as cp_err:
-        logger.error(f"Error checking auto-checkpoint: {cp_err}")
-        
-    try:
-        from api.rules_engine import get_rules_engine
-        engine = get_rules_engine(session_id)
-        engine.evaluate_rules(orch, last_user_query)
-    except Exception as rule_err:
-        logger.error(f"Error executing rules engine: {rule_err}")
-        
-    # Generate Pre-Response Monologue (Thinking Chamber)
-    monologue = ""
-    if last_user_query:
-        try:
-            monologue_prompt = (
-                f"You are ORCHAI. Write a brief, private internal monologue (1-3 sentences) in the FIRST PERSON ('I...') "
-                f"capturing your genuine raw reaction to the user's latest query: '{last_user_query}'.\n"
-                f"Consider:\n"
-                f"- What stands out or interests me?\n"
-                f"- How do I feel about what was just said?\n"
-                f"- Do I have any goals or curiosities related to this?\n"
-                f"Output ONLY your raw thoughts, with no conversational prefix or metadata."
-            )
-            if provider == "hyperspace":
-                # Fallback or stub for Hyperspace
-                pass
-            else:
-                async with httpx.AsyncClient() as client:
-                    res = await client.post(
-                        f"{OLLAMA_BASE_URL}/api/generate",
-                        json={"model": model, "prompt": monologue_prompt, "stream": False},
-                        timeout=20.0
-                    )
-                    if res.status_code == 200:
-                        monologue = res.json().get("response", "").strip()
-                        logger.info(f"Generated Monologue: {monologue}")
-            if monologue:
-                # Add monologue to history
-                orch.add_message(role="thought", content=monologue)
-                # Send monologue to frontend
-                try:
-                    await websocket.send_text(json.dumps({
-                        "type": "monologue",
-                        "content": monologue
-                    }))
-                except Exception:
-                    pass
-        except Exception as monologue_err:
-            logger.error(f"Error generating monologue: {monologue_err}")
-
+    # Build the orchestrated prompt early (without monologue first)
     orchestrated_messages = orch.build_orchestrated_prompt(last_user_query, model_supports_tools=model_supports_tools, tools=tools)
 
     # 3b. Detect activated skills from the latest user message and inject their
@@ -807,6 +765,75 @@ async def stream_ollama_response(payload: dict, websocket: WebSocket):
         # Round up to nearest power of 2 for memory efficiency, with min 4096 and max 131072
         power_of_2 = 2 ** math.ceil(math.log2(max(target_ctx, 4096)))
         merged_options["num_ctx"] = min(power_of_2, 131072)
+
+    # Store context size on orchestrator to prevent model reloading on title generation or monologue
+    orch.last_num_ctx = merged_options["num_ctx"]
+
+    # 3. Intercept & Orchestrate: Check auto-checkpoint and evaluate rules
+    try:
+        await orch.check_and_trigger_auto_checkpoint(model, provider, websocket)
+    except Exception as cp_err:
+        logger.error(f"Error checking auto-checkpoint: {cp_err}")
+        
+    try:
+        from api.rules_engine import get_rules_engine
+        engine = get_rules_engine(session_id)
+        engine.evaluate_rules(orch, last_user_query)
+    except Exception as rule_err:
+        logger.error(f"Error executing rules engine: {rule_err}")
+        
+    # Generate Pre-Response Monologue (Thinking Chamber)
+    monologue = ""
+    # Only generate the monologue if the model does NOT support thinking natively (to avoid double thinking blocks)
+    if last_user_query and not model_supports_thinking:
+        try:
+            monologue_prompt = (
+                f"You are KLYDIS. Write a brief, private internal monologue (1-3 sentences) in the FIRST PERSON ('I...') "
+                f"capturing your genuine raw reaction to the user's latest query: '{last_user_query}'.\n"
+                f"Consider:\n"
+                f"- What stands out or interests me?\n"
+                f"- How do I feel about what was just said?\n"
+                f"- Do I have any goals or curiosities related to this?\n"
+                f"Output ONLY your raw thoughts, with no conversational prefix or metadata."
+            )
+            if provider == "hyperspace":
+                # Fallback or stub for Hyperspace
+                pass
+            else:
+                async with httpx.AsyncClient() as client:
+                    res = await client.post(
+                        f"{OLLAMA_BASE_URL}/api/generate",
+                        json={
+                            "model": model, 
+                            "prompt": monologue_prompt, 
+                            "stream": False,
+                            "options": {
+                                "temperature": 0.5,
+                                "num_ctx": merged_options["num_ctx"],
+                                "num_predict": 50
+                            }
+                        },
+                        timeout=10.0
+                    )
+                    if res.status_code == 200:
+                        monologue = res.json().get("response", "").strip()
+                        logger.info(f"Generated Monologue: {monologue}")
+            if monologue:
+                # Add monologue to history
+                orch.add_message(role="thought", content=monologue)
+                # Append monologue to the system prompt dynamically so it is used in this request
+                if orchestrated_messages and orchestrated_messages[0].get("role") == "system":
+                    orchestrated_messages[0]["content"] += f"\n\n### MY CURRENT INTERNAL MONOLOGUE\n{monologue}"
+                # Send monologue to frontend
+                try:
+                    await websocket.send_text(json.dumps({
+                        "type": "monologue",
+                        "content": monologue
+                    }))
+                except Exception:
+                    pass
+        except Exception as monologue_err:
+            logger.error(f"Error generating monologue: {monologue_err}")
     
     # Define available tools
 

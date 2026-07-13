@@ -459,7 +459,7 @@ export function ChatInput({ onSendMessage, isStreaming, onStopGeneration, sendOn
         />
         <textarea 
           className="message-textarea" 
-          placeholder={isListening ? '🎙️ Listening... click mic to stop' : isTranscribing ? '⏳ Transcribing...' : 'Message ORCHAI...'}
+          placeholder={isListening ? '🎙️ Listening... click mic to stop' : isTranscribing ? '⏳ Transcribing...' : 'Message KLYDIS...'}
           rows={1}
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}

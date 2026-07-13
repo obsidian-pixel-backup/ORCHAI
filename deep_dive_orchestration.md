@@ -1,8 +1,8 @@
-# ORCHAI Orchestration Wrapper — Deep Dive Analysis
+# KLYDIS Orchestration Wrapper — Deep Dive Analysis
 
 ## Project Overview
 
-**Location:** `E:\DEVELOPER PROJECTS\ORCHAI`  
+**Location:** `E:\DEVELOPER PROJECTS\KLYDIS`  
 **Type:** Windows-native desktop application combining Electron frontend + Python FastAPI backend  
 **Purpose:** Autonomous agent orchestration wrapper enabling real-time chat with local LLMs (via Ollama) for solving complex development and computing problems.
 
@@ -48,7 +48,7 @@
                ▼
 ┌─────────────────────────────────────────────────────────┐
 │                    STORAGE & INFERENCE                   │
-│  SQLite: orchai_memory.db (sessions, messages)          │
+│  SQLite: klydis_memory.db (sessions, messages)          │
 │  Ollama: 127.0.0.1:11434 (default LLM server)          │
 │  Hyperspace: 127.0.0.1:8081 (distributed cluster)      │
 └─────────────────────────────────────────────────────────┘
@@ -204,7 +204,7 @@ Skills are activated via `[Skill: <label>]` markers in user messages. The system
 | `infinite_architect` | Infinite Architect | Ledger-based infinite-horizon workflows |
 | `self_evolution` | Self-Evolution | Reflect and update goals/persona |
 
-**Persistence:** Skills saved to `orchai_skills.json`, user-editable via management UI.
+**Persistence:** Skills saved to `klydis_skills.json`, user-editable via management UI.
 
 ---
 
@@ -279,7 +279,7 @@ stream_ollama_response() called
 
 ## Persistence Layer
 
-**SQLite Database (`orchai_memory.db`):**
+**SQLite Database (`klydis_memory.db`):**
 - `sessions` table: session_id, world_state, persona_state, config settings
 - `messages` table: id, role, content, timestamp, estimated_tokens, tool_calls_json, emotional_valence
 - All DB operations run in background threads via `_run_in_db_thread()` for async non-blocking
@@ -287,8 +287,8 @@ stream_ollama_response() called
 **File System:**
 - `{project}/memories/{session_id}/world_state.md` — Consolidated world state per session
 - `{project}/memories/{session_id}/persona_state.md` — Evolved persona per session
-- `orchai_skills.json` — User-customized skill registry
-- Frontend localStorage: `orchai_chats`, `orchai_active_chat_id`
+- `klydis_skills.json` — User-customized skill registry
+- Frontend localStorage: `klydis_chats`, `klydis_active_chat_id`
 
 ---
 

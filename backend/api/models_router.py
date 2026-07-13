@@ -1,5 +1,5 @@
 """
-Model Library router for ORCHAI.
+Model Library router for KLYDIS.
 
 Provides a single place to discover, download, and remove local LLMs so the user
 can manage disk space. Everything routes through the Ollama HTTP API (the same

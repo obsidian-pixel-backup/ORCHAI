@@ -34,8 +34,8 @@ hyperspace pod invite  # Run this on the master node to get an invite link
 hyperspace pod join <link>  # Run this on the worker nodes
 ```
 
-## Integration with ORCHAI
-When integrating this into ORCHAI's backend:
+## Integration with KLYDIS
+When integrating this into KLYDIS's backend:
 1. Detect if the user is on an OS that natively supports Hyperspace daemon (Linux/macOS). If on Windows, inform the user that it must be run under WSL2.
 2. Use `subprocess.Popen` to launch `hyperspace lan-pod start` or `hyperspace start --auto-model` in the background.
-3. Point ORCHAI's chat completion endpoint to `http://localhost:8080/v1` (Hyperspace's default API port).
+3. Point KLYDIS's chat completion endpoint to `http://localhost:8080/v1` (Hyperspace's default API port).

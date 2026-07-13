@@ -84,9 +84,9 @@ export function ModelSettingsPanel({
     const handleConfigUpdated = () => {
       fetchWorldState();
     };
-    window.addEventListener('orchai-config-updated', handleConfigUpdated);
+    window.addEventListener('klydis-config-updated', handleConfigUpdated);
     return () => {
-      window.removeEventListener('orchai-config-updated', handleConfigUpdated);
+      window.removeEventListener('klydis-config-updated', handleConfigUpdated);
     };
   }, [chatId]);
 
@@ -103,7 +103,7 @@ export function ModelSettingsPanel({
           dynamic_persona: persona,
         }),
       });
-      window.dispatchEvent(new CustomEvent('orchai-config-updated'));
+      window.dispatchEvent(new CustomEvent('klydis-config-updated'));
     } catch (err) {
       console.error('Failed to save memory parameters config', err);
     }

@@ -5,7 +5,7 @@ import logging
 import sqlite3
 from typing import Dict, Any, List
 
-logger = logging.getLogger("orchai.rules_engine")
+logger = logging.getLogger("klydis.rules_engine")
 
 class RulesEngine:
     """

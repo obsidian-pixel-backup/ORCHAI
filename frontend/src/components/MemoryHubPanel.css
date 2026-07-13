@@ -56,16 +56,17 @@
 /* ── Allocation Bar & Legend ── */
 .allocation-bar {
   display: flex;
+  gap: 3px;
   height: 8px;
   background-color: rgba(0, 0, 0, 0.35);
   border-radius: 7px;
-  overflow: hidden;
   margin: 4px 0 2px 0;
 }
 
 .bar-slice {
   height: 100%;
-  transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 2px;
 }
 
 .active-slice {
@@ -437,6 +438,7 @@
 .world-state-editor:focus {
   border-color: var(--accent-color);
   background-color: var(--input-bg);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
 /* ── Episodic Search ── */
@@ -860,6 +862,49 @@
   font-style: italic;
   color: var(--text-primary);
   line-height: 1.45;
+}
+
+/* Expandable Search Results */
+.search-result-item.clickable {
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.search-result-item.clickable:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: var(--accent-color);
+}
+
+.result-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.result-expand-toggle {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.search-result-item:hover .result-expand-toggle {
+  color: var(--accent-color);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+.result-content.expanded {
+  display: block;
+  overflow: visible;
+  -webkit-line-clamp: unset;
+  line-height: 1.55;
+  font-size: 0.82rem;
 }
 
 

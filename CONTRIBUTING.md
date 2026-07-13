@@ -1,12 +1,12 @@
-# Contributing to Orchai
+# Contributing to Klydis
 
-First off, thank you for considering contributing to Orchai! It's people like you that make Orchai a great tool.
+First off, thank you for considering contributing to Klydis! It's people like you that make Klydis a great tool.
 
 ## How Can I Contribute?
 
 ### Reporting Bugs
 
-This section guides you through submitting a bug report for Orchai. Following these guidelines helps maintainers and the community understand your report, reproduce the behavior, and find related reports.
+This section guides you through submitting a bug report for Klydis. Following these guidelines helps maintainers and the community understand your report, reproduce the behavior, and find related reports.
 
 *   **Ensure the bug was not already reported** by searching on GitHub under Issues.
 *   **Use a clear and descriptive title** for the issue to identify the problem.
@@ -15,11 +15,11 @@ This section guides you through submitting a bug report for Orchai. Following th
 
 ### Suggesting Enhancements
 
-This section guides you through submitting an enhancement suggestion for Orchai, including completely new features and minor improvements to existing functionality.
+This section guides you through submitting an enhancement suggestion for Klydis, including completely new features and minor improvements to existing functionality.
 
 *   **Use a clear and descriptive title** for the issue to identify the suggestion.
 *   **Provide a step-by-step description of the suggested enhancement** in as many details as possible.
-*   **Explain why this enhancement would be useful** to most Orchai users.
+*   **Explain why this enhancement would be useful** to most Klydis users.
 
 ### Pull Requests
 

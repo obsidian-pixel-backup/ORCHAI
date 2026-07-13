@@ -1,13 +1,13 @@
 <div align="center">
 
 
-![Orchai Banner](./assets/banner.png)
+![Klydis Banner](./assets/banner.png)
 
-## Orchai - The premier orchestration wrapper to reduce attention rot and maximize development throughput!
+## Klydis - The premier orchestration wrapper to reduce attention rot and maximize development throughput!
 
 </div>
 
-**ORCHAI** is an Orchestration Wrapper focused on reducing attention rot and throughput decay. It provides a robust, native desktop experience on Windows using Electron and a Python backend. It acts as an autonomous and collaborative agent orchestration application to help users efficiently solve complex development and computing problems.
+**KLYDIS** is an Orchestration Wrapper focused on reducing attention rot and throughput decay. It provides a robust, native desktop experience on Windows using Electron and a Python backend. It acts as an autonomous and collaborative agent orchestration application to help users efficiently solve complex development and computing problems.
 
 ## 🚀 Key Features
 
@@ -21,7 +21,7 @@
 
 ## 🏗️ Core Architecture
 
-ORCHAI is built with a dual-stack architecture designed for performance and maintainability:
+KLYDIS is built with a dual-stack architecture designed for performance and maintainability:
 
 - **Frontend**: A React + TypeScript UI built with Vite and packaged as a Windows native desktop application using Electron.
 - **Backend**: A Python FastAPI server handling orchestration logic, memory consolidation, system tool execution, and real-time WebSocket communication.
@@ -40,8 +40,8 @@ ORCHAI is built with a dual-stack architecture designed for performance and main
 The easiest way to start the entire application (both frontend and backend) on Windows is using the provided batch script:
 
 ```bash
-git clone https://github.com/obsidian-pixel-backup/ORCHAI.git
-cd ORCHAI
+git clone https://github.com/obsidian-pixel-backup/KLYDIS.git
+cd KLYDIS
 .\start.bat
 ```
 

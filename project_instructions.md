@@ -1,4 +1,4 @@
-# ORCHAI - Project Instructions and Architecture Rules
+# KLYDIS - Project Instructions and Architecture Rules
 
 ## Core Philosophy
 This project is an Orchestration Wrapper focused on reducing attention rot and throughput decay. It provides a robust, native desktop experience on Windows using Electron and a Python backend.

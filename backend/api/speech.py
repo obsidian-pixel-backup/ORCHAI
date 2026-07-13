@@ -9,7 +9,7 @@ import logging
 import io
 import asyncio
 
-logger = logging.getLogger("orchai.api.speech")
+logger = logging.getLogger("klydis.api.speech")
 
 router = APIRouter()
 
@@ -29,8 +29,8 @@ def _get_whisper_model():
         _whisper_model = WhisperModel("base.en", device="cpu", compute_type="int8")
         logger.info("Whisper model loaded for speech endpoint.")
         return _whisper_model
-    except ImportError:
-        logger.error("faster-whisper not installed. Speech-to-text unavailable.")
+    except Exception as e:
+        logger.error(f"Failed to load faster-whisper model for speech endpoint: {e}")
         return None
 
 
@@ -63,7 +63,7 @@ async def transcribe_audio(audio: UploadFile = File(...)):
             segments, _ = model.transcribe(
                 audio_io,
                 beam_size=5,
-                initial_prompt="Hello ORCHAI. Can you get me the Cape Town weather for today?"
+                initial_prompt="Hello KLYDIS. Can you get me the Cape Town weather for today?"
             )
             return " ".join([segment.text for segment in segments]).strip()
 

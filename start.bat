@@ -1,12 +1,12 @@
 @echo off
 echo ==========================================
-echo    Starting ORCHAI Orchestration Wrapper  
+echo    Starting KLYDIS Orchestration Wrapper  
 echo    (Hardware Safety Kill Switch Enabled)
 echo ==========================================
 echo.
 
 :: Store the project root directory
-set "ORCHAI_ROOT=%~dp0"
+set "KLYDIS_ROOT=%~dp0"
 
 :: ===== Step 0: Bootstrap Ollama if not running =====
 set "PROVIDER=%~1"
@@ -28,7 +28,7 @@ echo.
 
 :: ===== Step 1: Python Backend Dependencies =====
 echo [2/4] Verifying Python Requirements...
-pushd "%ORCHAI_ROOT%backend"
+pushd "%KLYDIS_ROOT%backend"
 pip install -r requirements.txt >nul 2>&1
 if ERRORLEVEL 1 (
     echo WARNING: Some Python packages may have failed to install.
@@ -38,7 +38,7 @@ popd
 
 :: ===== Step 2: Frontend Dependencies =====
 echo [3/4] Checking Frontend Dependencies...
-pushd "%ORCHAI_ROOT%frontend"
+pushd "%KLYDIS_ROOT%frontend"
 
 :: Only run npm install if node_modules doesn't exist
 if not exist "node_modules" (
@@ -89,7 +89,7 @@ if exist "node_modules\electron\dist\electron.exe" (
 )
 
 :: ===== Step 3: Kill any zombie processes on port 5173 =====
-echo [4/4] Launching ORCHAI Application...
+echo [4/4] Launching KLYDIS Application...
 
 :: Kill anything on port 5173
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":5173" ^| findstr "LISTENING" 2^>nul') do (

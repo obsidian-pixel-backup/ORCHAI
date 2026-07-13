@@ -472,7 +472,7 @@ export function ChatMessage({
                                 <span className="share-app-label">LinkedIn</span>
                               </a>
 
-                              <a href="#" className="share-app-btn" onClick={(e) => handleExternalLink(e, `https://reddit.com/submit?title=OrchAI%20Response&text=${encodeURIComponent(content)}`)}>
+                              <a href="#" className="share-app-btn" onClick={(e) => handleExternalLink(e, `https://reddit.com/submit?title=Klydis%20Response&text=${encodeURIComponent(content)}`)}>
                                 <div className="share-app-icon reddit-icon">
                                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M8 12h8"></path></svg>
                                 </div>
@@ -493,21 +493,21 @@ export function ChatMessage({
                                 <span className="share-app-label">Telegram</span>
                               </a>
 
-                              <a href="#" className="share-app-btn" onClick={(e) => handleExternalLink(e, `https://mail.google.com/mail/?view=cm&fs=1&su=OrchAI%20Response&body=${encodeURIComponent(content)}`)}>
+                              <a href="#" className="share-app-btn" onClick={(e) => handleExternalLink(e, `https://mail.google.com/mail/?view=cm&fs=1&su=Klydis%20Response&body=${encodeURIComponent(content)}`)}>
                                 <div className="share-app-icon gmail-icon">
                                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                                 </div>
                                 <span className="share-app-label">Gmail</span>
                               </a>
 
-                              <a href="#" className="share-app-btn" onClick={(e) => handleExternalLink(e, `https://docs.google.com/document/create?title=OrchAI%20Response`)}>
+                              <a href="#" className="share-app-btn" onClick={(e) => handleExternalLink(e, `https://docs.google.com/document/create?title=Klydis%20Response`)}>
                                 <div className="share-app-icon docs-icon">
                                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                                 </div>
                                 <span className="share-app-label">Google Docs</span>
                               </a>
                               
-                              <a href="#" className="share-app-btn" onClick={(e) => handleExternalLink(e, `mailto:?subject=OrchAI Response&body=${encodeURIComponent(content)}`)}>
+                              <a href="#" className="share-app-btn" onClick={(e) => handleExternalLink(e, `mailto:?subject=Klydis Response&body=${encodeURIComponent(content)}`)}>
                                 <div className="share-app-icon email-icon">
                                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
                                 </div>
@@ -517,7 +517,7 @@ export function ChatMessage({
                               <button className="share-app-btn" onClick={async () => {
                                 try {
                                   if (navigator.share && window.isSecureContext) {
-                                    await navigator.share({ title: 'OrchAI Response', text: content });
+                                    await navigator.share({ title: 'Klydis Response', text: content });
                                     triggerAction('shared');
                                   } else {
                                     await dialog.alert("Share Error", "Native sharing requires a secure HTTPS connection or isn't supported on this browser.");

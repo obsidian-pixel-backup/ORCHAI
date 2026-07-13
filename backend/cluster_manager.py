@@ -34,7 +34,7 @@ LLAMA_WINDOWS_URL = f"https://github.com/ggerganov/llama.cpp/releases/download/{
 LLAMA_WINDOWS_CUDART_URL = f"https://github.com/ggerganov/llama.cpp/releases/download/{LLAMA_CPP_VERSION}/cudart-llama-bin-win-cuda-12.4-x64.zip"
 
 # Version stamp file on Debian to track which version is compiled
-DEBIAN_VERSION_STAMP = f"~/.orchai/bin/.llama_rpc_version"
+DEBIAN_VERSION_STAMP = f"~/.klydis/bin/.llama_rpc_version"
 
 def parse_gguf_metadata(file_path):
     """Parse GGUF file to find block count (number of layers)."""
@@ -108,7 +108,7 @@ def get_local_gpu_vram():
 
 class ClusterManager:
     def __init__(self):
-        self.windows_bin_dir = Path.home() / ".orchai" / "bin"
+        self.windows_bin_dir = Path.home() / ".klydis" / "bin"
         self.windows_llama_server = self.windows_bin_dir / "llama-server.exe"
         self.windows_process = None
         self.worker_started = False
@@ -173,8 +173,8 @@ class ClusterManager:
                 logging.info(f"Debian worker needs compile (have: '{installed_version}', need: '{LLAMA_CPP_VERSION}')...")
                 compile_script = f"""
 set -e
-mkdir -p ~/.orchai/bin
-cd ~/.orchai/bin
+mkdir -p ~/.klydis/bin
+cd ~/.klydis/bin
 
 # Install build deps
 echo "{DEBIAN_PASSWORD}" | sudo -S apt-get update -qq
@@ -197,8 +197,8 @@ cmake .. -DGGML_RPC=ON -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release 2>&1 | tail -5
 make ggml-rpc-server -j4 2>/dev/null || make rpc-server -j4 2>/dev/null || make llama-rpc-server -j4
 
 # Find and copy the binary
-find . -name "*rpc-server" -type f -executable | head -1 | xargs -I{{}} cp {{}} ~/.orchai/bin/llama-rpc-server
-chmod +x ~/.orchai/bin/llama-rpc-server
+find . -name "*rpc-server" -type f -executable | head -1 | xargs -I{{}} cp {{}} ~/.klydis/bin/llama-rpc-server
+chmod +x ~/.klydis/bin/llama-rpc-server
 
 # Stamp the version
 echo "{LLAMA_CPP_VERSION}" > {DEBIAN_VERSION_STAMP}
@@ -209,13 +209,13 @@ echo "COMPILE_DONE"
                 compile_err = stderr.read().decode()
                 
                 # Check if compilation succeeded
-                check_bin = "ls ~/.orchai/bin/llama.cpp/build/bin/llama-rpc-server 2>/dev/null || ls ~/.orchai/bin/llama.cpp/build/bin/rpc-server 2>/dev/null || ls ~/.orchai/bin/llama.cpp/build/bin/ggml-rpc-server 2>/dev/null"
+                check_bin = "ls ~/.klydis/bin/llama.cpp/build/bin/llama-rpc-server 2>/dev/null || ls ~/.klydis/bin/llama.cpp/build/bin/rpc-server 2>/dev/null || ls ~/.klydis/bin/llama.cpp/build/bin/ggml-rpc-server 2>/dev/null"
                 stdin, stdout, stderr = ssh.exec_command(check_bin)
                 bin_path = stdout.read().decode().strip()
                 
                 if bin_path:
                     logging.info(f"Compilation successful: {bin_path}")
-                    ssh.exec_command(f"cp {bin_path} ~/.orchai/bin/llama-rpc-server")
+                    ssh.exec_command(f"cp {bin_path} ~/.klydis/bin/llama-rpc-server")
                     ssh.exec_command(f"echo '{LLAMA_CPP_VERSION}' > {DEBIAN_VERSION_STAMP}")
                 else:
                     logging.info(f"Failed to compile Debian worker.\nSTDOUT: {compile_output}\nSTDERR: {compile_err}")
@@ -227,7 +227,7 @@ echo "COMPILE_DONE"
             start_script = f"""
 killall llama-rpc-server 2>/dev/null
 sleep 1
-nohup ~/.orchai/bin/llama-rpc-server -H 0.0.0.0 -p {RPC_PORT} </dev/null > ~/.orchai/bin/rpc.log 2>&1 &
+nohup ~/.klydis/bin/llama-rpc-server -H 0.0.0.0 -p {RPC_PORT} </dev/null > ~/.klydis/bin/rpc.log 2>&1 &
 sleep 2
 ps aux | grep -v grep | grep llama-rpc-server | wc -l
 """
@@ -351,7 +351,7 @@ ps aux | grep -v grep | grep llama-rpc-server | wc -l
         logging.info(f"[CLUSTER] Local GPU VRAM: {local_vram_total / (1024**3):.2f} GB")
         
         # Calculate context size from environment (defaulting to 131072 for massive, limitless context)
-        ctx_size = int(os.getenv("ORCHAI_CTX_SIZE", "131072"))
+        ctx_size = int(os.getenv("KLYDIS_CTX_SIZE", "131072"))
         logging.info(f"[CLUSTER] Using context size: {ctx_size}")
 
         # KV cache footprint per layer: ctx_size * 2048 bytes (assumes GQA with 8 KV heads, 128 head_dim, 8-bit quantized)

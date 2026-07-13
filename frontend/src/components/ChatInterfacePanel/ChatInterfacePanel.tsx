@@ -347,7 +347,7 @@ export function ChatInterfacePanel({
           ws.close(1000, 'Effect cleaned up');
           return;
         }
-        console.log('Connected to ORCHAI backend');
+        console.log('Connected to KLYDIS backend');
         reconnectAttempts = 0; // Reset backoff on successful connection
       };
 
@@ -431,9 +431,9 @@ export function ChatInterfacePanel({
               });
             }
 
-            if (localStorage.getItem('orchai_notifications') === 'true' && document.hidden) {
+            if (localStorage.getItem('klydis_notifications') === 'true' && document.hidden) {
               if ('Notification' in window && Notification.permission === 'granted') {
-                new Notification('OrchAI', {
+                new Notification('Klydis', {
                   body: 'New response received from model.',
                   icon: '/favicon.ico'
                 });
@@ -880,7 +880,7 @@ export function ChatInterfacePanel({
                         aria-label={`Jump to ${msg.role === 'user' ? 'Message' : 'Response'}`}
                       />
                       <div className="navigator-tooltip">
-                        <span className="tooltip-role">{msg.role === 'user' ? 'You' : 'OrchAI'}</span>
+                        <span className="tooltip-role">{msg.role === 'user' ? 'You' : 'Klydis'}</span>
                         <span className="tooltip-text">{previewText}</span>
                       </div>
                     </div>
